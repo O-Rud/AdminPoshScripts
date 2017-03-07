@@ -110,6 +110,5 @@ else {
     }
 }
 
-
 Export-ModuleMember Get-CertEncryptedString
 Export-ModuleMember Get-CertDecryptedString
