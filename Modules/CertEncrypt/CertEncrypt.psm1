@@ -1,5 +1,5 @@
-﻿Function Get-CertEncryptedString{
-<#
+﻿Function Get-CertEncryptedString {
+    <#
  .Synopsis
   Encrypts string using certificate in protected storage
 
@@ -24,42 +24,41 @@
 
   .Output
    Returns enrypted string
+   #>
+    param(
+        [Parameter(Position = 0,
+            Mandatory = $True,
+            ValueFromPipeline = $True)][string]$SourceString,
 
-#>
-param(
-[Parameter(Position=0,
-    Mandatory=$True,
-    ValueFromPipeline=$True)][string]$SourceString,
+        [Parameter(Position = 1,
+            Mandatory = $True,
+            ValueFromPipeline = $True,
+            ParameterSetName = 'ProtectedStorage')][string]$CertThumbprint,
 
-[Parameter(Position=1,
-    Mandatory=$True,
-    ValueFromPipeline=$True,
-    ParameterSetName='ProtectedStorage')][string]$CertThumbprint,
+        [Parameter(ParameterSetName = 'ProtectedStorage')][switch]$UseMachineStorage,
 
-[Parameter(ParameterSetName='ProtectedStorage')][switch]$UseMachineStorage,
-
-[Parameter(ParameterSetName='File')][string]$Path
-)
-if ($UseMachineStorage){
-    $store = "Cert:\LocalMachine\My"
+        [Parameter(ParameterSetName = 'File')][string]$Path
+    )
+    if ($UseMachineStorage) {
+        $store = "Cert:\LocalMachine\My"
     }
-else {
-    $store = "Cert:\CurrentUser\My"
+    else {
+        $store = "Cert:\CurrentUser\My"
     }
-if ($path) {
-	$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-	$cert.Import($Path)
-} else {
-	$cert = Get-ChildItem $store | Where-Object {$_.thumbprint -eq $CertThumbprint}
-}
-$EncodedString = [system.text.encoding]::UTF8.GetBytes($SourceString)
-$EncryptedBytes = $Cert.PublicKey.Key.Encrypt($EncodedString, $true)
-[System.Convert]::ToBase64String($EncryptedBytes)
+    if ($path) {
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+        $cert.Import($Path)
+    }
+    else {
+        $cert = Get-ChildItem $store | Where-Object {$_.thumbprint -eq $CertThumbprint}
+    }
+    $EncodedString = [system.text.encoding]::UTF8.GetBytes($SourceString)
+    $EncryptedBytes = $Cert.PublicKey.Key.Encrypt($EncodedString, $true)
+    [System.Convert]::ToBase64String($EncryptedBytes)
 }
 
-
-Function Get-CertDecryptedString{
-<#
+Function Get-CertDecryptedString {
+    <#
  .Synopsis
   Decrypts string using certificate in protected storage
 
@@ -82,31 +81,31 @@ Function Get-CertDecryptedString{
 
   .Output
    Returns decrypted string
-#>
-param(
-[Parameter(Position=0,
-    Mandatory=$True,
-    ValueFromPipeline=$True)]
-[string]$SourceString,
-[string]$CertThumbprint,
-[switch]$UseMachineStorage,
-[switch]$AsSecureString
-)
-if ($UseMachineStorage){
-    $store = "Cert:\LocalMachine\My"
+    #>
+    param(
+        [Parameter(Position = 0,
+            Mandatory = $True,
+            ValueFromPipeline = $True)]
+        [string]$SourceString,
+        [string]$CertThumbprint,
+        [switch]$UseMachineStorage,
+        [switch]$AsSecureString
+    )
+    if ($UseMachineStorage) {
+        $store = "Cert:\LocalMachine\My"
     }
-else {
-    $store = "Cert:\CurrentUser\My"
+    else {
+        $store = "Cert:\CurrentUser\My"
     }
-$cert = Get-ChildItem $store | Where-Object {$_.thumbprint -eq $CertThumbprint}
-$EncryptedBytes = [System.Convert]::FromBase64String($SourceString)
-$DecryptedBytes = $Cert.PrivateKey.Decrypt($EncryptedBytes, $true)
-$DecryptedString = [system.text.encoding]::UTF8.GetString($DecryptedBytes)
-if ($AsSecureString){
-    ConvertTo-SecureString -String $DecryptedString -AsPlainText -Force
+    $cert = Get-ChildItem $store | Where-Object {$_.thumbprint -eq $CertThumbprint}
+    $EncryptedBytes = [System.Convert]::FromBase64String($SourceString)
+    $DecryptedBytes = $Cert.PrivateKey.Decrypt($EncryptedBytes, $true)
+    $DecryptedString = [system.text.encoding]::UTF8.GetString($DecryptedBytes)
+    if ($AsSecureString) {
+        ConvertTo-SecureString -String $DecryptedString -AsPlainText -Force
     }
-else {
-    $DecryptedString
+    else {
+        $DecryptedString
     }
 }
 
