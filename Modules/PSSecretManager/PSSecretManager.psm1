@@ -230,3 +230,11 @@ Function Get-PSSMCredential {
     return $cred
 }
 
+Function Get-PSSMSecret {
+    param(
+        [string]$SecretName="*",
+        [hashtable]$PSSMDatabase = $global:PSSMCurrentDatabase
+    )
+$KeyList = $PSSMDatabase.keys -like $SecretName
+return $PSSMDatabase[$KeyList]
+}
