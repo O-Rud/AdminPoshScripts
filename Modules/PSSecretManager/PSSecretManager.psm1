@@ -141,10 +141,11 @@ Function Set-PSSMCurrentDatabase {
     param(
         $Path = $PSSMDatabasePathPreference
     )
-    if (test-path $Path){
+    if (test-path $Path) {
         $global:PSSMCurrentDatabase = Import-PSSMDatabase -Path $Path
-    } Else {
-       $global:PSSMCurrentDatabase = @{}
+    }
+    Else {
+        $global:PSSMCurrentDatabase = @{}
     }
     $global:PSSMCurrentDatabasePath = $Path
 }
@@ -194,14 +195,18 @@ Function New-PSSMSecret {
 
 Function Add-PSSMSecret {
     param(
-        [Parameter (Mandatory = $true)]$PSSMSecret,
+        [Parameter (Mandatory = $true, ValueFromPipeline = $true)]$PSSMSecret,
         [hashtable]$PSSMDatabase = $global:PSSMCurrentDatabase,
         [switch]$Force
     )
-    if ($PSSMDatabase.containskey($PSSMSecret.SecretName) -and -not $Force) {
-        throw "Secret with name $($PSSMSecret.SecretName) already exists in Database. Use another SecretName or parameter -Force to overwrite existing Secret"
+    Begin {}
+    Process {
+        if ($PSSMDatabase.containskey($PSSMSecret.SecretName) -and -not $Force) {
+            throw "Secret with name $($PSSMSecret.SecretName) already exists in Database. Use another SecretName or parameter -Force to overwrite existing Secret"
+        }
+        $PSSMDatabase[$PSSMSecret.SecretName] = $PSSMSecret
     }
-    $PSSMDatabase[$PSSMSecret.SecretName]=$PSSMSecret
+    End {}
 }
 
 Function Get-PSSMCredential {
