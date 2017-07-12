@@ -41,15 +41,20 @@ Function Get-BambooEmployee {
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
-    Begin
-    {
-    $DefaultFields = ("employeeNumber", "firstName", "lastName", "workEmail", "jobTitle", "department","Status")
-    $Fields = $DefaultFields + $Properties | Select-Object -Unique
-    $Fieldlist = $Fields -join ","
+    Begin {
+        if ($Properties -contains '*') {
+            $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain
+            $Fields = $FieldsMetadata.foreach( {if ([string]$($_.alias) -ne '') {$_.alias} else {$_.id}})
+        }
+        else {
+            $DefaultFields = ("employeeNumber", "firstName", "lastName", "workEmail", "jobTitle", "department", "Status")
+            $Fields = $DefaultFields + $Properties | Select-Object -Unique
+        }
+        $Fieldlist = $Fields -join ","
     }
-    process{
-    $ApiCall = "employees/${id}?fields=${Fieldlist}"
-    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+    process {
+        $ApiCall = "employees/${id}?fields=${Fieldlist}"
+        Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
     }
 }
 
@@ -62,7 +67,7 @@ Function Get-BambooDirectory {
     $ApiCall = "employees/directory"
     $result = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
     if ($ReturnFieldlist) { $result} else {
-         $result.employees
+        $result.employees
     }
     
 
