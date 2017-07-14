@@ -69,7 +69,46 @@ Function Get-BambooDirectory {
     if ($ReturnFieldlist) { $result} else {
         $result.employees
     }
-    
+}
 
-
+Function Get-BambooTimeOffRequests {
+    [CmdletBinding()]param(
+        [int]$RequestId,
+        [int]$EmployeeId,
+        [datetime]$Start,
+        [datetime]$End,
+        [int]$TypeId,
+        [ValidateSet('approved','denied','superceded','requested','canceled')][string]$Status,
+        [ValidateSet("view", "approve")][string]$Action,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+        )
+    $Filter = @{}
+    if ($PSBoundParameters.ContainsKey('RequestId')){
+        $Filter['id']=$RequestId
+    }
+    if ($PSBoundParameters.ContainsKey('EmployeeId')){
+        $Filter['employeeId']=$EmployeeId
+    }
+    if ($PSBoundParameters.ContainsKey('TypeId')){
+        $Filter['type']=$TypeId
+    }
+    if ($PSBoundParameters.ContainsKey('Start')){
+        $Filter['start']=$Start.ToString('yyyy-MM-dd')
+    }
+    if ($PSBoundParameters.ContainsKey('End')){
+        $Filter['end']=$End.ToString('yyyy-MM-dd')
+    }
+    if ($PSBoundParameters.ContainsKey('Action')){
+        $Filter['action']=$Action
+    }
+    if ($PSBoundParameters.ContainsKey('Status')){
+        $Filter['status']=$Status
+    }
+    if ($Filter.Keys.Count -gt 0){
+        $FilterList = foreach($key in $Filter.keys){"$key=$($Filter[$key])"}
+        $FilterString = "?$($Filterlist -join '&')"
+    }
+    $ApiCall = "time_off/requests/$FilterString"
+    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
 }
