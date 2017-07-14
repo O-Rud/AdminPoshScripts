@@ -16,7 +16,7 @@ Function Invoke-BambooAPI {
     $doTry = $true
     while ($doTry) {
         try {
-            Invoke-RestMethod -Method Get -Uri $uri -Credential $mycreds -Headers @{Accept = "application/json"}
+            Invoke-RestMethod -Method Get -Uri $uri -Credential $mycreds -Headers @{Accept = "application/json"} -DisableKeepAlive
             $doTry = $false
         }
         catch {
@@ -27,7 +27,7 @@ Function Invoke-BambooAPI {
             }
             else {
                 $doTry = $false
-                throw $_
+                Write-Error $_ -RecommendedAction Stop
             }
         }
     }
