@@ -36,7 +36,7 @@ Function Invoke-BambooAPI {
 
 Function Get-BambooEmployee {
     [CmdletBinding()]param(
-        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)][int]$id,
+        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [string[]]$Properties,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
