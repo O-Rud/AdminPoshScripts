@@ -34,14 +34,26 @@ Function Invoke-BambooAPI {
 
 }
 
+workflow Invoke-BambooAPIParallelCalls {
+    param (
+        [string[]]$ApiCallList,
+        [string]$ApiKey,
+        [string]$Subdomain
+    )
+    foreach -parallel ($ApiCall in $ApiCallList){
+        Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
+    }
+}
+
 Function Get-BambooEmployee {
     [CmdletBinding()]param(
-        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
+        [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [string[]]$Properties,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
     Begin {
+        $ApiCallList = New-Object System.Collections.ArrayList
         if ($Properties -contains '*') {
             $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain
             $Fields = $FieldsMetadata.foreach( {if ([string]$($_.alias) -ne '') {$_.alias} else {$_.id}})
@@ -53,8 +65,18 @@ Function Get-BambooEmployee {
         $Fieldlist = $Fields -join ","
     }
     process {
-        $ApiCall = "employees/${id}?fields=${Fieldlist}"
-        Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+        if ($PSBoundParameters.ContainsKey('id')){
+        $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")}
+    }
+    End{
+        if (-not ($PSBoundParameters.ContainsKey('id'))) {
+            $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
+            $employeeids  = ($ChangeList.employees | gm -MemberType NoteProperty).name | Where-Object{$ChangeList.employees.$_.action -ne 'deleted'}
+            foreach ($id in $employeeids){
+                $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+            }
+        }
+        Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
     }
 }
 
