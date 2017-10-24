@@ -36,6 +36,7 @@ Function Get-FreePhoneNumbers
 {
     param ([parameter (Mandatory=$true)][string]$PlaceTelApiKey)
     $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
-    $BusyNumbers = get-csuser -Filter {EnterpriseVoiceEnabled -eq $true} | ForEach-Object{($_.lineuri.split(';') -like "tel:*") -replace('tel:','')}
-    $AllNumbers | ?{$BusyNumbers -notcontains $_}
+    $LineUris = (get-csuser -Filter {EnterpriseVoiceEnabled -eq $true}).LineUri + (get-CsDialInConferencingAccessNumber).LineUri
+    $BusyNumbers = $LineUris |  ForEach-Object{($_.split(';') -like "tel:*") -replace('tel:','')}
+    $AllNumbers | Where-Object{$BusyNumbers -notcontains $_}
 }
