@@ -32,14 +32,33 @@ Function Get-PlacetelNumbers {
     }
 }
 
-Function Get-FreePhoneNumbers {
-    param ([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
-    $regex = [regex]"tel:(\+?[\d]+)"
-    $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
-    $LineUris = (get-csuser -Filter {EnterpriseVoiceEnabled -eq $true}).LineUri + (get-CsDialInConferencingAccessNumber).LineUri
-    $BusyNumbers = $LineUris |  ForEach-Object {
-        $match = $regex.match($_);
+Function Get-LineUriPhoneNumber{
+    param([parameter(ValueFromPipelineByPropertyName)][string]$LineUri)
+    Begin{
+        $regex = [regex]"tel:(\+?[\d]+)"
+    }
+    process{
+        $match = $regex.match($LineUri);
         if ($match.Success) {$match.Groups[1].value}
     }
+}
+
+Function Get-SfBUsedNumbers{
+    #User Numbers
+    get-csuser -Filter {EnterpriseVoiceEnabled -eq $true} | Get-LineUriPhoneNumber
+    #Conference DialIn
+    get-CsDialInConferencingAccessNumber | Get-LineUriPhoneNumber
+    }
+
+Function Get-FreePhoneNumbers {
+    param ([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
+    $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
+    $BusyNumbers = Get-SfBUsedNumbers
     $AllNumbers | Where-Object {$BusyNumbers -notcontains $_}
+}
+
+Function Get-WrongSfBNumberConfig{
+    param([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
+    $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
+    Get-CsUser -Filter {EnterpriseVoiceEnabled -eq $true} | Where-Object{$AllNumbers -notcontains $($_ | Get-LineUriPhoneNumber)}
 }
