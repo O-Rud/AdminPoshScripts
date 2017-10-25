@@ -1,4 +1,5 @@
 Function Connect-ExchangeOnline {
+    [CmdletBinding()]
     param(
         [pscredential]$Credential = $(Get-Credential)
 
@@ -8,6 +9,7 @@ Function Connect-ExchangeOnline {
 }
 
 Function ConvertTo-NormalizedPhoneNumber {
+    [CmdletBinding()]
     param(
         [string]$PhoneNumber,
         [string]$LocalPrefix = "+49"
@@ -19,6 +21,7 @@ Function ConvertTo-NormalizedPhoneNumber {
 }
 
 Function Get-PlacetelNumbers {
+    [CmdletBinding()]
     param(
         [string]$ApiKey
     )
@@ -32,33 +35,85 @@ Function Get-PlacetelNumbers {
     }
 }
 
-Function Get-LineUriPhoneNumber{
-    param([parameter(ValueFromPipelineByPropertyName)][string]$LineUri)
-    Begin{
+Function Get-LineUriPhoneNumber {
+    [CmdletBinding()]
+    param([parameter(ValueFromPipeline, ValueFromPipelineByPropertyName)][string]$LineUri)
+    Begin {
         $regex = [regex]"tel:(\+?[\d]+)"
     }
-    process{
+    process {
         $match = $regex.match($LineUri);
         if ($match.Success) {$match.Groups[1].value}
     }
 }
 
-Function Get-SfBUsedNumbers{
+Function Convert-NumberRangeToArray {
+    [CmdletBinding()]
+    param(
+        [parameter (Mandatory = $true, ValueFromPipelineByPropertyName)][string]$NumberRangeStart,
+        [parameter (Mandatory = $true, ValueFromPipelineByPropertyName)][string]$NumberRangeEnd
+    )
+    Begin {
+        $r = [regex]"(tel:)(\+)?([0]+)?([\d]+)"
+    }
+    process {
+        $mstart = $r.Match($NumberRangeStart)
+        $mend = $r.Match($NumberRangeEnd)
+        $Prefix = $mstart.groups[1..3] -join ''
+        [int64]$start = $mstart.groups[4].value
+        [int64]$end = $mend.groups[4].value
+        for ([int64]$num = $start; $num -le $end; $num++) {
+            "$Prefix$num"
+        }
+
+    }
+}
+
+Function Get-SfBUsedNumbers {
+    [CmdletBinding()]
+    param([switch]$ExcludeUnassignedNumbers)
     #User Numbers
     get-csuser -Filter {EnterpriseVoiceEnabled -eq $true} | Get-LineUriPhoneNumber
     #Conference DialIn
     get-CsDialInConferencingAccessNumber | Get-LineUriPhoneNumber
+    #Unassigned Numbers
+    if (-not $ExcludeUnassignedNumbers) {
+        Get-CsUnassignedNumber | Convert-NumberRangeToArray | Get-LineUriPhoneNumber
     }
+}
 
 Function Get-FreePhoneNumbers {
+    [CmdletBinding()]
     param ([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
     $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
     $BusyNumbers = Get-SfBUsedNumbers
     $AllNumbers | Where-Object {$BusyNumbers -notcontains $_}
 }
 
-Function Get-WrongSfBNumberConfig{
+Function Get-WrongSfBNumberConfig {
+    [CmdletBinding()]
     param([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
     $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
-    Get-CsUser -Filter {EnterpriseVoiceEnabled -eq $true} | Where-Object{$AllNumbers -notcontains $($_ | Get-LineUriPhoneNumber)}
+    Get-CsUser -Filter {EnterpriseVoiceEnabled -eq $true} | Where-Object {$AllNumbers -notcontains $($_ | Get-LineUriPhoneNumber)}
+}
+
+Function Set-SfBSecondaryNumber {
+    [CmdletBinding()]
+    param(
+        [parameter (Mandatory = $true, ValueFromPipelineByPropertyName)]$Identity,
+        [parameter (Mandatory = $true)][string]$LineUri
+    )
+    process {
+        if ($Identity -is [Microsoft.Rtc.Management.ADConnect.Schema.OCSADUser]) {
+            $csuser = $Identity
+        }
+        else {
+            $csuser = Get-CsUser $Identity
+        }
+        $SipAddress = $csuser.SipAddress
+        $RegistrarPool = $csuser.RegistrarPool
+        $AnnouncementName = "Forwarding to $SipAddress"
+        New-CsAnnouncement -Parent "service:ApplicationServer:$RegistrarPool" -Name $AnnouncementName -TargetURI $SipAddress
+        New-CsUnassignedNumber -Identity "Secondary Number for $SipAddress" -AnnouncementService "ApplicationServer:$RegistrarPool" -NumberRangeStart $LineUri -NumberRangeEnd $LineUri -AnnouncementName $AnnouncementName
+    }
 }
