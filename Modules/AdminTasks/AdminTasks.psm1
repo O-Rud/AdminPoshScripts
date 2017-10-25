@@ -112,8 +112,12 @@ Function Set-SfBSecondaryNumber {
         }
         $SipAddress = $csuser.SipAddress
         $RegistrarPool = $csuser.RegistrarPool
+        $Announcement = get-CsAnnouncement | Where-Object {$_.TargetUri -eq $SipAddress} | Select-Object -First 1
+        if ($Announcement) {$AnnouncementName = $Announcement.Name}
+        else{
         $AnnouncementName = "Forwarding to $SipAddress"
         New-CsAnnouncement -Parent "service:ApplicationServer:$RegistrarPool" -Name $AnnouncementName -TargetURI $SipAddress
-        New-CsUnassignedNumber -Identity "Secondary Number for $SipAddress" -AnnouncementService "ApplicationServer:$RegistrarPool" -NumberRangeStart $LineUri -NumberRangeEnd $LineUri -AnnouncementName $AnnouncementName
+        }
+        New-CsUnassignedNumber -Identity "$LineUri -> $SipAddress" -AnnouncementService "ApplicationServer:$RegistrarPool" -NumberRangeStart $LineUri -NumberRangeEnd $LineUri -AnnouncementName $AnnouncementName
     }
 }
