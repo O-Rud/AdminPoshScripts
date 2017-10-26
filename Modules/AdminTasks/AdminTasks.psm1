@@ -114,10 +114,33 @@ Function Set-SfBSecondaryNumber {
         $RegistrarPool = $csuser.RegistrarPool
         $Announcement = get-CsAnnouncement | Where-Object {$_.TargetUri -eq $SipAddress} | Select-Object -First 1
         if ($Announcement) {$AnnouncementName = $Announcement.Name}
-        else{
-        $AnnouncementName = "Forwarding to $SipAddress"
-        New-CsAnnouncement -Parent "service:ApplicationServer:$RegistrarPool" -Name $AnnouncementName -TargetURI $SipAddress
+        else {
+            $AnnouncementName = "Forwarding to $SipAddress"
+            New-CsAnnouncement -Parent "service:ApplicationServer:$RegistrarPool" -Name $AnnouncementName -TargetURI $SipAddress
         }
         New-CsUnassignedNumber -Identity "$LineUri -> $SipAddress" -AnnouncementService "ApplicationServer:$RegistrarPool" -NumberRangeStart $LineUri -NumberRangeEnd $LineUri -AnnouncementName $AnnouncementName
+    }
+}
+
+function Read-SfBClientLog {
+    [CmdletBinding()]
+    param (
+        [string]$Path
+    )
+    
+    begin {
+        $regex = [regex]"(\d\d\d\d-\d\d-\d\d\s\d\d:\d\d:\d\d\.\d\d\d)\s([a-zA-Z\d]{16})\s([^\s]+)\s([^\s]+)\s(.+)"
+    }
+    
+    process {
+        $log = [io.file]::ReadAllText($Path)
+        foreach ($match in $regex.matches($log)) {
+            [pscustomobject]@{
+                date = [datetime]$match.groups[1].value;
+                id = $match.groups[2].value;
+                Level = $match.groups[3].value; Scope = $match.groups[4].value;
+                Message = $match.groups[5].value
+            }
+        }
     }
 }
