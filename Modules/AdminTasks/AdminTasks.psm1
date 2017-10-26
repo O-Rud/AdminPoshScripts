@@ -221,7 +221,7 @@ Function Get-FreePhoneNumbers {
     $AllNumbers | Where-Object {$BusyNumbers -notcontains $_}
 }
 
-Function Get-WrongSfBNumberConfig {
+Function Get-SfBWrongNumberConfig {
 <#
 .SYNOPSIS
 Returns Skype for Business users, who has incorrect phone numbers
@@ -233,7 +233,7 @@ Returns Skype for Business users, who has incorrect phone numbers (Not available
 API key used to authenticate at placetel. API key is available at placetel website
 
 .EXAMPLE
-Get-WrongSfBNumberConfig -PlaceTelApiKey asdlfhkadkjsbfkjahsdfkldaslfkgdhjasgflkdasbflasdfghaojdsfjasdg
+Get-SfBWrongNumberConfig -PlaceTelApiKey asdlfhkadkjsbfkjahsdfkldaslfkgdhjasgflkdasbflasdfghaojdsfjasdg
 #>
     [CmdletBinding()]
     param([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
