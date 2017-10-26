@@ -222,19 +222,19 @@ Function Get-FreePhoneNumbers {
 }
 
 Function Get-SfBWrongNumberConfig {
-<#
-.SYNOPSIS
-Returns Skype for Business users, who has incorrect phone numbers
+    <#
+    .SYNOPSIS
+    Returns Skype for Business users, who has incorrect phone numbers
 
-.DESCRIPTION
-Returns Skype for Business users, who has incorrect phone numbers (Not available for Skype for business)
+    .DESCRIPTION
+    Returns Skype for Business users, who has incorrect phone numbers (Not available for Skype for business)
 
-.PARAMETER PlaceTelApiKey
-API key used to authenticate at placetel. API key is available at placetel website
+    .PARAMETER PlaceTelApiKey
+    API key used to authenticate at placetel. API key is available at placetel website
 
-.EXAMPLE
-Get-SfBWrongNumberConfig -PlaceTelApiKey asdlfhkadkjsbfkjahsdfkldaslfkgdhjasgflkdasbflasdfghaojdsfjasdg
-#>
+    .EXAMPLE
+    Get-SfBWrongNumberConfig -PlaceTelApiKey asdlfhkadkjsbfkjahsdfkldaslfkgdhjasgflkdasbflasdfghaojdsfjasdg
+    #>
     [CmdletBinding()]
     param([parameter (Mandatory = $true)][string]$PlaceTelApiKey)
     $AllNumbers = Get-PlacetelNumbers -ApiKey $PlaceTelApiKey
