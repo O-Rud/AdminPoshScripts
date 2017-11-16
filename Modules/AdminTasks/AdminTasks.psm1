@@ -310,7 +310,7 @@ function Import-SfBClientLog {
     )
     
     begin {
-        $regex = [regex]"(\d\d\d\d-\d\d-\d\d\s\d\d:\d\d:\d\d\.\d\d\d)\s([a-zA-Z\d]{16})\s([^\s]+)\s([^\s]+)\s(.+)"
+        $regex = [regex]::new('^(\d\d\d\d-\d\d-\d\d\s\d\d:\d\d:\d\d\.\d\d\d)\s([a-zA-Z\d]{16})\s([^\s]+)\s([^\s]+)\s([^\s]+)\s((.|\n)*?)(?=(?:^\d\d\d\d-\d\d-\d\d\s\d\d:\d\d:\d\d\.\d\d\d\s[a-zA-Z\d]{16})|\z)','Multiline')
     }
     
     process {
@@ -319,9 +319,36 @@ function Import-SfBClientLog {
             [pscustomobject]@{
                 date = [datetime]$match.groups[1].value;
                 id = $match.groups[2].value;
-                Level = $match.groups[3].value; Scope = $match.groups[4].value;
-                Message = $match.groups[5].value
+                Level = $match.groups[3].value;
+                Scope = $match.groups[4].value;
+                SfBMethod = $match.groups[5].value;
+                Message = $match.groups[6].value
             }
         }
     }
+}
+
+function Get-SfBSQLData {
+    [CmdletBinding()]
+    param (
+        [parameter (Mandatory=$true)][string]$Query,
+        [ValidateSet("rtclocal","lynclocal","rtc")][string]$Instance='rtclocal',
+        [string]$Database = 'rtc'
+    )
+    $hostname = (Get-CsService -CentralManagement).poolfqdn
+    $ServerInstance = "$hostname\$Instance"
+    write-debug $ServerInstance
+    $res = Invoke-SqlCmd -Query $Query -ServerInstance $ServerInstance -Database $Database
+    foreach ($item in $res){
+        $ht = @{}
+        $Props = ($res | Get-Member -MemberType Properties).Name
+        foreach ($prop in $Props){
+            if ($item.$prop -is [byte[]]){
+                $ht[$prop]=[text.encoding]::UTF8.GetString($item.$prop).trim(0)
+            } else {
+                $ht[$prop]=$item.$prop
+            }
+        }
+        [pscustomobject]$ht
+    }    
 }
