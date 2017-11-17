@@ -8,14 +8,24 @@ class UCWAApplication {
     [string]$DiscoveryUri
     [object]$Cache
     [object]$DiscoveryCache
-    [hashtable]$resources
-    hidden[pscredential]$Credential
-    
+    [hashtable]$Resources
+    [pscredential]$Credential
     hidden [string]$AuthHeader
     hidden [object]$AuthToken
 
-    UCWAApp() {
+    UCWAApplication() {
         $This.User = ([adsi]"LDAP://<SID=$([Security.Principal.WindowsIdentity]::GetCurrent().user.value)>")."msRTCSIP-PrimaryUserAddress"
+        $This.DiscoveryUri = $This::GetDiscoveryUri($This.User)
+    }
+
+    UCWAApplication([string]$User){
+        $this.User = $User
+        $This.DiscoveryUri = $This::GetDiscoveryUri($This.User)
+    }
+
+    UCWAApplication([string]$User, [pscredential]$Credential){
+        $this.User = $User
+        $this.Credential = $Credential
         $This.DiscoveryUri = $This::GetDiscoveryUri($This.User)
     }
 
@@ -33,7 +43,7 @@ class UCWAApplication {
         }
     }
 
-    hidden static [hashtable]BrowseMethods([object]$obj, $ObjName, $ParentName){
+    hidden static [hashtable]BrowseMethods([object]$obj, $ObjName, $ParentName) {
         [hashtable]$result = @{}
         $FieldNames = ($obj | Get-Member -MemberType Properties).Name
         foreach ($name in $FieldNames) {
@@ -52,8 +62,8 @@ class UCWAApplication {
                     else {
                         $res = [UCWAApplication]::BrowseMethods($obj.$Name, $name, $ObjName)
                     }
-                    foreach($key in $res.Keys){
-                        $result[$key]=$res[$key];
+                    foreach ($key in $res.Keys) {
+                        $result[$key] = $res[$key];
                     }
                 }
             }
@@ -61,13 +71,14 @@ class UCWAApplication {
         return $result
     }
 
-    static [hashtable]BrowseMethods([object]$obj){
-        return [UCWAApplication]::BrowseMethods($obj,'application','')
+    static [hashtable]BrowseMethods([object]$obj) {
+        return [UCWAApplication]::BrowseMethods($obj, 'application', '')
     }
 
     Connect() {
         $rx = [regex]"(http(?:s)?\:\/\/(?:[^\/]+))\/(?:[\S]+)?"
-        $This.DiscoveryCache = $This.InvokeUCWARequest('Get', $This.DiscoveryUri).Content | ConvertFrom-Json
+        $Responce = $This.InvokeUCWARequest('Get', $This.DiscoveryUri)
+        $This.DiscoveryCache = $Responce.Data
         $AppDiscoveryLink = $This.DiscoveryCache._links.applications.href
         $This.AppBaseUri = $rx.Match($AppDiscoveryLink).Groups[1]
         $AppRequestBody = @{
@@ -75,13 +86,15 @@ class UCWAApplication {
             EndpointId = $This.EndpointId
             Culture    = $This.Culture
         }
-        $This.Cache = $This.InvokeUCWARequest('Post', $AppDiscoveryLink, $AppRequestBody).Content | ConvertFrom-Json
+        $Responce = $This.InvokeUCWARequest('Post', $AppDiscoveryLink, $AppRequestBody)
+        $This.Cache = $Responce.Data
         $This.resources = [UCWAApplication]::BrowseMethods($This.Cache)
-     }
+        $This.User = $This.Cache._embedded.me.Uri
+    }
 
-     Disconnect(){
-        $This.InvokeUCWARequest('delete',$This.AppCache._links.self.href)
-     }
+    Disconnect() {
+        $This.InvokeUCWARequest('delete', $This.AppCache._links.self.href)
+    }
 
     hidden ProcessError([object]$Err) {
         if ($err.TargetObject -is [net.webrequest]) {
@@ -106,101 +119,117 @@ class UCWAApplication {
                 $AuthHeaderHT[$realm] = $value
             }
             $AuthUri = $AuthHeaderHT.href[0]
-            if ($AuthHeaderHT.grant_type -contains 'urn:microsoft.rtc:windows') {
-                $This.AuthToken = Invoke-RestMethod -Method Post -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -Uri $AuthUri -UseDefaultCredentials -Body "grant_type=urn:microsoft.rtc:windows"
-                $This.AuthHeader = "{0} {1}" -f $This.AuthToken.token_type, $This.AuthToken.access_token
+            If ($This.Credential -ne $null) {
+                $Username = [System.Web.HttpUtility]::UrlEncode($This.Credential.UserName)
+                $Pswd = [System.Web.HttpUtility]::UrlEncode($This.Credential.GetNetworkCredential().Password)
+                $AuthRequestBody = "grant_type=password&username={0}&password={1}" -f $Username, $Pswd
+            }
+            elseif ($AuthHeaderHT.grant_type -contains 'urn:microsoft.rtc:windows') {
+                $AuthRequestBody = "grant_type=urn:microsoft.rtc:windows"
             }
             else {
-                throw "Windows Integrated Authentication is not supported"
+                throw "No credentials provided and Windows Integrated Authentication is not supported"
             }
+            $This.AuthToken = Invoke-RestMethod -Method Post -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -Uri $AuthUri -UseDefaultCredentials -Body $AuthRequestBody
+            $This.AuthHeader = "{0} {1}" -f $This.AuthToken.token_type, $This.AuthToken.access_token
         }
     }
 
-    RequestAuthToken() {
+
+RequestAuthToken() {
+    try {
+        $Response = Invoke-WebRequest $This.DiscoveryUri -Method Get
+    }
+    catch {
+        $Response = $_.Exception.Response
+    }
+    if ($Response.StatusCode -eq 401) {
+        $This.RequestAuthToken($Response)
+    }
+}
+    
+[pscustomObject]InvokeUCWARequest(
+    [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
+    [string]$Uri,
+    [object]$Body,
+    [string]$ContentType,
+    [int]$RetryCount 
+        
+) {
+    if ($Uri -notmatch "^http(s)?://") {
+        $Uri = "{0}{1}" -f $This.AppBaseUri, $Uri
+    }
+    $RequestParam = @{
+        Method      = $Method;
+        Uri         = $Uri
+        ContentType = $ContentType
+    }
+    if ($ContentType -eq 'application/json' -and $Body -is [hashtable]) {
+        $Body = ConvertTo-Json $Body
+    }
+    if ($Body -ne $null) {
+        $RequestParam['Body'] = $Body
+    }
+    $AllowRetry = $true
+    while ($RetryCount -gt 0 -and $AllowRetry) {        
         try {
-            $Response = Invoke-WebRequest $This.DiscoveryUri -Method Get
+            if ($This.AuthHeader -ne $null) {
+                $RequestParam['Headers'] = @{Authorization = $This.AuthHeader}
+            }
+            $Res = Invoke-WebRequest @RequestParam
+            $AllowRetry = $False
+            if ($Res.Headers.'Content-Type' -match 'application/json' -and $res.RawContentLength -gt 0){
+                $Data = convertfrom-json $res.Content
+            } else {
+                $Data = $res.Content
+            }
+            return [pscustomobject]@{
+                'Data' = $Data
+                'Headers' = $res.Headers
+            }
+
         }
         catch {
-            $Response = $_.Exception.Response
-        }
-        if ($Response.StatusCode -eq 401) {
-            $This.RequestAuthToken($Response)
-        }
-    }
-    
-    [pscustomObject]InvokeUCWARequest(
-        [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
-        [string]$Uri,
-        [object]$Body,
-        [string]$ContentType,
-        [int]$RetryCount 
-        
-    ) {
-        if ($Uri -notmatch "^http(s)?://"){
-            $Uri = "{0}{1}" -f $This.AppBaseUri,$Uri
-        }
-        $RequestParam = @{
-            Method      = $Method;
-            Uri         = $Uri
-            ContentType = $ContentType
-        }
-        if ($ContentType -eq 'application/json' -and $Body -is [hashtable]){
-            $Body = ConvertTo-Json $Body
-        }
-        if ($Body -ne $null) {
-            $RequestParam['Body'] = $Body
-        }
-        $AllowRetry = $true
-        while ($RetryCount -gt 0 -and $AllowRetry) {        
-            try {
-                if ($This.AuthHeader -ne $null) {
-                    $RequestParam['Headers'] = @{Authorization = $This.AuthHeader}
-                }
-                $Res = Invoke-WebRequest @RequestParam
-                $AllowRetry = $False
-                return $res
-            }
-            catch {
-                $err = $_
-                $This.ProcessError($_)
-                --$RetryCount
-                if ($RetryCount -eq 0) {
-                    Write-Error -ErrorRecord $err -RecommendedAction stop
-                }
+            $err = $_
+            $This.ProcessError($_)
+            --$RetryCount
+            if ($RetryCount -eq 0) {
+                Write-Error -ErrorRecord $err -ErrorAction stop
             }
         }
-        return $null
     }
+    return $null
+}
 
-    [pscustomObject]InvokeUCWARequest(
-        [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
-        [string]$Uri
-    ) {
-        [object]$Body = $null
-        [string]$ContentType = 'application/json'
-        [int]$RetryCount = 3 
-        return $This.InvokeUCWARequest($Method, $Uri,  $Body, $ContentType, $RetryCount)
-    }
+[pscustomObject]InvokeUCWARequest(
+    [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
+    [string]$Uri
+) {
+    [object]$Body = $null
+    [string]$ContentType = 'application/json'
+    [int]$RetryCount = 3 
+    return $This.InvokeUCWARequest($Method, $Uri, $Body, $ContentType, $RetryCount)
+}
 
-    [pscustomObject]InvokeUCWARequest(
-        [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
-        [string]$Uri,
-        [object]$Body
-    ) {
-        [string]$ContentType = 'application/json'
-        [int]$RetryCount = 3 
-        return $This.InvokeUCWARequest($Method, $Uri,  $Body, $ContentType, $RetryCount)
-    }
+[pscustomObject]InvokeUCWARequest(
+    [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
+    [string]$Uri,
+    [object]$Body
+) {
+    [string]$ContentType = 'application/json'
+    [int]$RetryCount = 3 
+    return $This.InvokeUCWARequest($Method, $Uri, $Body, $ContentType, $RetryCount)
+}
 
-    [pscustomObject]InvokeUCWARequest(
-        [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
-        [string]$Uri,
-        [object]$Body,
-        [string]$ContentType
-    ) {
-        [int]$RetryCount = 3 
-        return $This.InvokeUCWARequest($Method, $Uri,  $Body, $ContentType, $RetryCount)
-    }
+[pscustomObject]InvokeUCWARequest(
+    [Microsoft.PowerShell.Commands.WebRequestMethod]$Method,
+    [string]$Uri,
+    [object]$Body,
+    [string]$ContentType
+) {
+    [int]$RetryCount = 3 
+    return $This.InvokeUCWARequest($Method, $Uri, $Body, $ContentType, $RetryCount)
+}
 
 
 }
