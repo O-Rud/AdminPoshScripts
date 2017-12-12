@@ -31,10 +31,10 @@ class UCWAApplication {
     [pscredential]$Credential
     hidden [string]$AuthHeader
     hidden [object]$AuthToken
+    [string]$Proxy
 
     hidden Init($User) {
         $this.User = $User
-        $this.DiscoveryUri = $This::GetDiscoveryUri($this.User)
     }
 
     UCWAApplication([string]$User) {
@@ -50,12 +50,12 @@ class UCWAApplication {
         $this.Init($User)
     }
 
-    static [string]GetDiscoveryUri([string]$User) {
+    static [string]GetDiscoveryUri([string]$User,[object]$proxy) {
         $Domain = ($User -split "@")[1]
         $IntDiscover = "LyncDiscoverInternal.$Domain"
         $ExtDiscover = "LyncDiscover.$Domain"
-        try {$DiscoveryInfo = Invoke-RestMethod "HTTPS://$IntDiscover" -Method Get}
-        catch {$DiscoveryInfo = Invoke-RestMethod "HTTPS://$ExtDiscover" -Method Get}
+        try {$DiscoveryInfo = Invoke-RestMethod "HTTPS://$IntDiscover" -Method Get -UseBasicParsing -Proxy $proxy}
+        catch {$DiscoveryInfo = Invoke-RestMethod "HTTPS://$ExtDiscover" -Method Get -UseBasicParsing -Proxy $proxy}
         if (($DiscoveryInfo._links | Get-Member -MemberType Properties).name -contains 'user') {
             return $DiscoveryInfo._links.user.href
         }
@@ -97,6 +97,7 @@ class UCWAApplication {
     }
 
     Connect() {
+        $this.DiscoveryUri = $This::GetDiscoveryUri($this.User, $this.Proxy)
         $rx = [regex]"(http(?:s)?\:\/\/(?:[^\/]+))\/(?:[\S]+)?"
         $Responce = $this.InvokeUCWARequest('Get', $this.DiscoveryUri)
         $this.DiscoveryCache = $Responce.Data
@@ -192,7 +193,7 @@ class UCWAApplication {
             else {
                 throw "No credentials provided and Windows Integrated Authentication is not supported"
             }
-            $this.AuthToken = Invoke-RestMethod -Method Post -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -Uri $AuthUri -UseDefaultCredentials -Body $AuthRequestBody
+            $this.AuthToken = Invoke-RestMethod -Method Post -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -Uri $AuthUri -UseDefaultCredentials -Body $AuthRequestBody -UseBasicParsing -Proxy $this.Proxy
             $this.AuthHeader = "{0} {1}" -f $this.AuthToken.token_type, $this.AuthToken.access_token
         }
     }
@@ -200,7 +201,7 @@ class UCWAApplication {
 
     RequestAuthToken() {
         try {
-            $Response = Invoke-WebRequest $this.DiscoveryUri -Method Get
+            $Response = Invoke-WebRequest $this.DiscoveryUri -Method Get -UseBasicParsing -Proxy $this.Proxy
         }
         catch {
             $Response = $_.Exception.Response
@@ -225,6 +226,7 @@ class UCWAApplication {
             Method      = $Method;
             Uri         = $Uri
             ContentType = $ContentType
+            Proxy = $this.Proxy
         }
         if ($ContentType -eq 'application/json' -and $Body -is [hashtable]) {
             $Body = ConvertTo-Json $Body
@@ -238,7 +240,7 @@ class UCWAApplication {
                 if ($this.AuthHeader -ne $null) {
                     $RequestParam['Headers'] = @{Authorization = $this.AuthHeader}
                 }
-                $Res = Invoke-WebRequest @RequestParam
+                $Res = Invoke-WebRequest @RequestParam -UseBasicParsing
                 $AllowRetry = $False
                 if ($Res.Headers.'Content-Type' -match 'application/json' -and $res.RawContentLength -gt 0) {
                     $Data = convertfrom-json $res.Content
@@ -295,7 +297,7 @@ class UCWAApplication {
     }
 
     joinOnlineMeeting([string]$MeetingJoinUrl) {
-        $res = Invoke-WebRequest -Uri $MeetingJoinUrl -Headers @{Accept = 'Application/vnd.microsoft.lync.meeting+xml'} -ErrorAction Stop
+        $res = Invoke-WebRequest -Uri $MeetingJoinUrl -Headers @{Accept = 'Application/vnd.microsoft.lync.meeting+xml'} -ErrorAction Stop -UseBasicParsing -Proxy $this.Proxy
         $Data = [xml]$res.Content
         $onlineMeetingUri = $data.'conf-info'.'conf-uri'
         $OperationId = [guid]::NewGuid().guid
@@ -306,7 +308,7 @@ class UCWAApplication {
         }
         $result = $this.InvokeUCWARequest('Post', $this.Resources.joinOnlineMeeting, $JoinRequet)
         $this.queryUCWAEvents()
-        $this.Conversations | ForEach-Object{$_.EnableMessaging()}
+        $this.Conversations.ToArray() | ForEach-Object{$_.EnableMessaging()}
 
     }
 
@@ -480,7 +482,7 @@ class UCWAConversation {
     }
 
     [string]ToString() {
-        return $($This | Select-Object ConversationUri, State, threadId, subject, participantCount | ConvertTo-Json)
+        return $($This | Select-Object OnlineMeetingJoinUrl, ConversationUri, State, threadId, subject, participantCount | ConvertTo-Json)
     }
 
 }
