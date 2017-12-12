@@ -20,7 +20,7 @@ Function Connect-ExchangeOnline {
         [pscredential]$Credential = $(Get-Credential)
 
     )
-    $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/' -Credential $Credential -Authentication Basic -AllowRedirection
+    $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/?proxymethod=rps' -Credential $Credential -Authentication Basic -AllowRedirection
     Import-Module (Import-PSSession $Session -AllowClobber) -Global
 }
 
