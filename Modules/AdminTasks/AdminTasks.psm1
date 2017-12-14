@@ -114,7 +114,7 @@ Function Get-LineUriPhoneNumber {
         $regex = [regex]"tel:(\+?[\d]+)"
     }
     process {
-        $match = $regex.match($LineUri);
+        $match = $regex.match($LineUri.ToLower());
         if ($match.Success) {$match.Groups[1].value}
     }
 }
