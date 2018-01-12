@@ -40,7 +40,7 @@ workflow Invoke-BambooAPIParallelCalls {
         [string]$ApiKey,
         [string]$Subdomain
     )
-    foreach -parallel ($ApiCall in $ApiCallList){
+    foreach -parallel ($ApiCall in $ApiCallList) {
         Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
     }
 }
@@ -49,6 +49,7 @@ Function Get-BambooEmployee {
     [CmdletBinding()]param(
         [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [string[]]$Properties,
+        [switch]$IncludeNonameProperties,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
@@ -57,7 +58,17 @@ Function Get-BambooEmployee {
         if ($Properties -contains '*') {
             $StandardFields = @("address1", "address2", "age", "bestEmail", "birthday", "city", "country", "dateOfBirth", "department", "division", "eeo", "employeeNumber", "employmentHistoryStatus", "ethnicity", "exempt", "firstName", "flsaCode", "fullName1", "fullName2", "fullName3", "fullName4", "fullName5", "displayName", "gender", "hireDate", "originalHireDate", "homeEmail", "homePhone", "id", "jobTitle", "lastChanged", "lastName", "location", "maritalStatus", "middleName", "mobilePhone", "payChangeReason", "payGroup", "payGroupId", "payRate", "payRateEffectiveDate", "payType", "payPer", "paidPer", "paySchedule", "payScheduleId", "payFrequency", "includeInPayroll", "preferredName", "ssn", "sin", "state", "stateCode", "status", "supervisor", "supervisorId", "supervisorEId", "terminationDate", "workEmail", "workPhone", "workPhonePlusExtension", "workPhoneExtension", "zipcode", "isPhotoUploaded", "standardHoursPerWeek", "bonusDate", "bonusAmount", "bonusReason", "bonusComment", "commissionDate", "commisionDate", "commissionAmount", "commissionComment")
             $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain
-            $Fields = $StandardFields + $FieldsMetadata.foreach( {if ([string]$($_.alias) -ne '') {$_.alias} else {$_.id}}) | Select-Object -Unique
+            $CustomFields = $FieldsMetadata.foreach( {
+                    if ([string]$($_.alias) -ne '') {
+                        $_.alias
+                    }
+                    else {
+                        if ($IncludeNonameProperties) {
+                            $_.id
+                        }
+                    }
+                })
+            $Fields = $StandardFields + $CustomFields | Select-Object -Unique | Sort-Object
         }
         else {
             $DefaultFields = ("employeeNumber", "firstName", "lastName", "workEmail", "jobTitle", "department", "Status")
@@ -66,15 +77,43 @@ Function Get-BambooEmployee {
         $Fieldlist = $Fields -join ","
     }
     process {
-        if ($PSBoundParameters.ContainsKey('id')){
-        $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")}
+        if ($PSBoundParameters.ContainsKey('id')) {
+            $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+        }
     }
-    End{
+    End {
         if (-not ($PSBoundParameters.ContainsKey('id'))) {
             $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
-            $employeeids  = ($ChangeList.employees | gm -MemberType NoteProperty).name | Where-Object{$ChangeList.employees.$_.action -ne 'deleted'}
-            foreach ($id in $employeeids){
+            $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
+            foreach ($id in $employeeids) {
                 $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+            }
+        }
+        Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
+    }
+}
+
+Function Get-BambooEmployeeTable{
+    [CmdletBinding()]param(
+        [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
+        [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    Begin {
+        $ApiCallList = New-Object System.Collections.ArrayList
+    }
+    process {
+        if ($PSBoundParameters.ContainsKey('id')) {
+            $null = $ApiCallList.Add("employees/${id}/tables/$Tablename")
+        }
+    }
+    End {
+        if (-not ($PSBoundParameters.ContainsKey('id'))) {
+            $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
+            $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
+            foreach ($id in $employeeids) {
+                $null = $ApiCallList.Add("employees/${id}/tables/$Tablename")
             }
         }
         Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
@@ -101,35 +140,35 @@ Function Get-BambooTimeOffRequests {
         [datetime]$Start,
         [datetime]$End,
         [int]$TypeId,
-        [ValidateSet('approved','denied','superceded','requested','canceled')][string]$Status,
+        [ValidateSet('approved', 'denied', 'superceded', 'requested', 'canceled')][string]$Status,
         [ValidateSet("view", "approve")][string]$Action,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
-        )
+    )
     $Filter = @{}
-    if ($PSBoundParameters.ContainsKey('RequestId')){
-        $Filter['id']=$RequestId
+    if ($PSBoundParameters.ContainsKey('RequestId')) {
+        $Filter['id'] = $RequestId
     }
-    if ($PSBoundParameters.ContainsKey('EmployeeId')){
-        $Filter['employeeId']=$EmployeeId
+    if ($PSBoundParameters.ContainsKey('EmployeeId')) {
+        $Filter['employeeId'] = $EmployeeId
     }
-    if ($PSBoundParameters.ContainsKey('TypeId')){
-        $Filter['type']=$TypeId
+    if ($PSBoundParameters.ContainsKey('TypeId')) {
+        $Filter['type'] = $TypeId
     }
-    if ($PSBoundParameters.ContainsKey('Start')){
-        $Filter['start']=$Start.ToString('yyyy-MM-dd')
+    if ($PSBoundParameters.ContainsKey('Start')) {
+        $Filter['start'] = $Start.ToString('yyyy-MM-dd')
     }
-    if ($PSBoundParameters.ContainsKey('End')){
-        $Filter['end']=$End.ToString('yyyy-MM-dd')
+    if ($PSBoundParameters.ContainsKey('End')) {
+        $Filter['end'] = $End.ToString('yyyy-MM-dd')
     }
-    if ($PSBoundParameters.ContainsKey('Action')){
-        $Filter['action']=$Action
+    if ($PSBoundParameters.ContainsKey('Action')) {
+        $Filter['action'] = $Action
     }
-    if ($PSBoundParameters.ContainsKey('Status')){
-        $Filter['status']=$Status
+    if ($PSBoundParameters.ContainsKey('Status')) {
+        $Filter['status'] = $Status
     }
-    if ($Filter.Keys.Count -gt 0){
-        $FilterList = foreach($key in $Filter.keys){"$key=$($Filter[$key])"}
+    if ($Filter.Keys.Count -gt 0) {
+        $FilterList = foreach ($key in $Filter.keys) {"$key=$($Filter[$key])"}
         $FilterString = "?$($Filterlist -join '&')"
     }
     $ApiCall = "time_off/requests/$FilterString"
