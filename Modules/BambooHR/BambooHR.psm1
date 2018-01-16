@@ -3,9 +3,12 @@ Function Invoke-BambooAPI {
         [parameter(Mandatory = $true)][string]$ApiCall,
         [parameter(Mandatory = $true)][string]$ApiKey,
         [parameter(Mandatory = $true)][string]$Subdomain,
+        [Microsoft.PowerShell.Commands.WebRequestMethod]$Method = 'Get',
+        [object]$Body,
         [int]$MaxRetryCount = 5,
         [int]$RetryDelay = 100,
-        [string]$ApiVer = 'v1'
+        [string]$ApiVer = 'v1',
+        [switch]$ReturnRawData
     )
     $secpasswd = ConvertTo-SecureString "x" -AsPlainText -Force
     $mycreds = New-Object System.Management.Automation.PSCredential ($ApiKey, $secpasswd)
@@ -16,7 +19,18 @@ Function Invoke-BambooAPI {
     $doTry = $true
     while ($doTry) {
         try {
-            Invoke-RestMethod -Method Get -Uri $uri -Credential $mycreds -Headers @{Accept = "application/json"} -DisableKeepAlive
+            $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true}
+            if ($PSBoundParameters.ContainsKey('Body')) {
+                $splat['Body'] = $Body
+            }
+            $Responce = Invoke-WebRequest @Splat
+            $Data = $Responce.content
+            if ($ReturnRawData) {
+                $Data
+            }
+            else {
+                ConvertFrom-Json -InputObject $Data
+            }
             $doTry = $false
         }
         catch {
@@ -43,6 +57,43 @@ workflow Invoke-BambooAPIParallelCalls {
     foreach -parallel ($ApiCall in $ApiCallList) {
         Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
     }
+}
+
+Function Get-BambooReport {
+    [CmdletBinding()]param(
+        [parameter(Mandatory = $true, ParameterSetName = 'ID')][int]$ReportId,
+        [parameter(ParameterSetName = 'ID')][switch]$FilterDuplicates,
+        [parameter(ParameterSetName = 'Custom')][switch]$CustomReport,
+        [parameter(Mandatory = $true, ParameterSetName = 'Custom')][string]$ReportRequest,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain}
+    if ($PSCmdlet.ParameterSetName -eq 'ID') {
+        $fdm = @{$true = 'yes'; $false = 'no'}
+        $fd = $fdm[$([bool]$FilterDuplicates)]
+        $splat['ApiCall'] = "reports/${ReportId}/?format=json&fd=${fd}"
+    }
+    if ($PSCmdlet.ParameterSetName -eq 'Custom') {
+        $splat['Method'] = 'POST'
+        $splat['Body'] = $ReportRequest
+        $splat['ApiCall'] = 'reports/custom?format=json'
+    }
+    
+    Invoke-BambooAPI @splat
+}
+
+Function New-BambooReportRequest {
+    [CmdletBinding()]param(
+        [string[]]$Properties,
+        [string]$Name = "CustomReport",
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    $fields = foreach ($Property in $Properties) {
+        "<field id=`"$Property`" />"
+    }
+    "<report><title>$Name</title><fields>$($fields -join '')</fields></report>"
 }
 
 Function Get-BambooEmployee {
@@ -93,7 +144,7 @@ Function Get-BambooEmployee {
     }
 }
 
-Function Get-BambooEmployeeTable{
+Function Get-BambooEmployeeTable {
     [CmdletBinding()]param(
         [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
@@ -173,4 +224,24 @@ Function Get-BambooTimeOffRequests {
     }
     $ApiCall = "time_off/requests/$FilterString"
     Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+}
+
+Function Get-BambooJobInfoOnDate{
+    [CmdletBinding()]param(
+        [parameter(Mandatory = $true, ParameterSetName='Online')][int]$EmployeeId,
+        [parameter(Mandatory = $true, ParameterSetName='Cached')][array]$Jobinfo,
+        [parameter(Mandatory = $true)][datetime]$date,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    if ($PSCmdlet.ParameterSetName -eq 'Online'){
+        $Jobinfo = Get-BambooEmployeeTable -id $EmployeeId -TableName 'jobInfo' -Subdomain $Subdomain -ApiKey $ApiKey
+    }
+    $JobInfo = $Jobinfo | Sort-Object -Property date -Descending
+    foreach ($item in $Jobinfo){
+        if ($date -ge $([datetime]$item.date)){
+            return $item
+            break
+        }
+    }
 }
