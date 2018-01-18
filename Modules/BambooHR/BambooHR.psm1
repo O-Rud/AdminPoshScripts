@@ -226,22 +226,62 @@ Function Get-BambooTimeOffRequests {
     Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
 }
 
-Function Get-BambooJobInfoOnDate{
+Function Get-BambooJobInfoOnDate {
     [CmdletBinding()]param(
-        [parameter(Mandatory = $true, ParameterSetName='Online')][int]$EmployeeId,
-        [parameter(Mandatory = $true, ParameterSetName='Cached')][array]$Jobinfo,
+        [parameter(Mandatory = $true, ParameterSetName = 'Online')][int]$EmployeeId,
+        [parameter(Mandatory = $true, ParameterSetName = 'Cached')][array]$Jobinfo,
         [parameter(Mandatory = $true)][datetime]$date,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
-    if ($PSCmdlet.ParameterSetName -eq 'Online'){
+    if ($PSCmdlet.ParameterSetName -eq 'Online') {
         $Jobinfo = Get-BambooEmployeeTable -id $EmployeeId -TableName 'jobInfo' -Subdomain $Subdomain -ApiKey $ApiKey
     }
     $JobInfo = $Jobinfo | Sort-Object -Property date -Descending
-    foreach ($item in $Jobinfo){
-        if ($date -ge $([datetime]$item.date)){
+    foreach ($item in $Jobinfo) {
+        if ($date -ge $([datetime]$item.date)) {
             return $item
             break
         }
+    }
+}
+
+Function Set-BambooEmployee {
+    [CmdletBinding()]param(
+        [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
+        [hashtable]$Replace,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    Begin {
+        $Fields = foreach ($key in $Replace.keys) {
+            "<field id=`"$key`">$($Replace[$key])</field>"
+        }
+        $Body = "<employee>$($Fields -join '')</employee>"
+    }
+    Process {
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -Method Post -ApiCall "employees/$id" -Body $Body
+    }
+    
+}
+
+Function Set-BambooListItem{
+    [CmdletBinding()]param(
+        [parameter(Mandatory=$true)][int]$ListId,
+        [parameter(ValueFromPipelineByPropertyName)][int]$ItemId,
+        [parameter(ValueFromPipelineByPropertyName)][String]$ItemValue,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    Begin{
+        [collections.ArrayList]$Options = @()
+    }
+    Process{
+        $null = $Options.add("<option id=`"$ItemId`">$ItemValue</option>")
+    }
+    End{
+        $ApiCall = "meta/lists/$ListId"
+        $Body = "<options>$($Options -join '')</options>"
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData
     }
 }
