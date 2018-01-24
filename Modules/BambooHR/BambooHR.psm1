@@ -261,6 +261,31 @@ Function Get-BambooJobInfoOnDate {
     }
 }
 
+Function Get-BambooListItems{
+[CmdletBinding()]param(
+    [parameter(Mandatory = $true, ParameterSetName = 'Name')][string]$Name,
+    [parameter(Mandatory = $true, ParameterSetName = 'Alias')][string]$Alias,
+    [parameter(Mandatory = $true, ParameterSetName = 'FieldID')][int]$FieldID,
+    [switch]$IncludeArchived,
+    [parameter(Mandatory = $true)][string]$Subdomain,
+    [parameter(Mandatory = $true)][string]$ApiKey
+)
+
+    if ($PSCmdlet.ParameterSetName -eq 'FieldID'){
+        $ApiCall = "meta/lists/$FieldID"
+    } else {
+        $ApiCall = "meta/lists"
+    }
+    $res = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+    if ($PSCmdlet.ParameterSetName -eq 'Name'){$res = $res | Where-Object {$_.name -eq $Name}}
+    if ($PSCmdlet.ParameterSetName -eq 'Alias'){$res = $res | Where-Object {$_.name -eq $Alias}}
+    if ($IncludeArchived){
+        $res.options
+    } else {
+        $res.options | Where-Object {$_.archived -eq 'no'}
+    }
+}
+
 Function Set-BambooEmployee {
     [CmdletBinding()]param(
         [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
