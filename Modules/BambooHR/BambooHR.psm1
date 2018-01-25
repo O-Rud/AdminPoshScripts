@@ -98,7 +98,7 @@ Function New-BambooReportRequest {
 
 Function Get-BambooEmployee {
     [CmdletBinding()]param(
-        [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
+        [parameter(ValueFromPipeline = $true,ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
         [string[]]$Properties,
         [switch]$IncludeNonameProperties,
         [parameter(Mandatory = $true)][string]$Subdomain,
@@ -146,7 +146,7 @@ Function Get-BambooEmployee {
 
 Function Get-BambooEmployeeTable {
     [CmdletBinding()]param(
-        [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
+        [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
         [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
         [switch]$RequireRowIds,
         [parameter(Mandatory = $true)][string]$Subdomain,
@@ -318,6 +318,26 @@ Function Set-BambooListItem{
     }
     Process{
         $null = $Options.add("<option id=`"$ItemId`">$ItemValue</option>")
+    }
+    End{
+        $ApiCall = "meta/lists/$ListId"
+        $Body = "<options>$($Options -join '')</options>"
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData
+    }
+}
+
+Function Add-BambooListItem{
+    [CmdletBinding()]param(
+        [parameter(Mandatory=$true)][int]$ListId,
+        [parameter(ValueFromPipeline=$true)][String]$ItemValue,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
+    Begin{
+        [collections.ArrayList]$Options = @()
+    }
+    Process{
+        $null = $Options.add("<option>$ItemValue</option>")
     }
     End{
         $ApiCall = "meta/lists/$ListId"
