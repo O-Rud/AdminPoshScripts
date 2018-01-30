@@ -106,9 +106,10 @@ Function New-BambooReportRequest {
 
 Function Get-BambooEmployee {
     [CmdletBinding()]param(
-        [parameter(ValueFromPipeline = $true,ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
+        [parameter(ParameterSetName = 'id',ValueFromPipeline = $true,ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
         [string[]]$Properties,
         [switch]$IncludeNonameProperties,
+        [parameter(ParameterSetName = 'id')][switch]$UseMultiRequest,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
@@ -117,21 +118,25 @@ Function Get-BambooEmployee {
         if ($Properties -contains '*') {
             $StandardFields = @("address1", "address2", "age", "bestEmail", "birthday", "city", "country", "dateOfBirth", "department", "division", "eeo", "employeeNumber", "employmentHistoryStatus", "ethnicity", "exempt", "firstName", "flsaCode", "fullName1", "fullName2", "fullName3", "fullName4", "fullName5", "displayName", "gender", "hireDate", "originalHireDate", "homeEmail", "homePhone", "id", "jobTitle", "lastChanged", "lastName", "location", "maritalStatus", "middleName", "mobilePhone", "payChangeReason", "payGroup", "payGroupId", "payRate", "payRateEffectiveDate", "payType", "payPer", "paidPer", "paySchedule", "payScheduleId", "payFrequency", "includeInPayroll", "preferredName", "ssn", "sin", "state", "stateCode", "status", "supervisor", "supervisorId", "supervisorEId", "terminationDate", "workEmail", "workPhone", "workPhonePlusExtension", "workPhoneExtension", "zipcode", "isPhotoUploaded", "standardHoursPerWeek", "bonusDate", "bonusAmount", "bonusReason", "bonusComment", "commissionDate", "commisionDate", "commissionAmount", "commissionComment")
             $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain
-            $CustomFields = $FieldsMetadata.foreach( {
-                    if ([string]$($_.alias) -ne '') {
-                        $_.alias
+            $CustomFields = foreach($Metadata in $FieldsMetadata) {
+                    if ([string]$($Metadata.alias) -ne '') {
+                        if($UseMultiRequest){
+                        $Metadata.alias
+                        }else{
+                            $Metadata.id
+                        }
                     }
                     else {
                         if ($IncludeNonameProperties) {
-                            $_.id
+                            $Metadata.id
                         }
                     }
-                })
+                }
             $Fields = $StandardFields + $CustomFields | Select-Object -Unique | Sort-Object
         }
         else {
             $DefaultFields = ("employeeNumber", "firstName", "lastName", "workEmail", "jobTitle", "department", "Status")
-            $Fields = $DefaultFields + $Properties | Select-Object -Unique
+            $Fields = $DefaultFields + $Properties | Select-Object -Unique | Sort-Object
         }
         $Fieldlist = $Fields -join ","
     }
@@ -141,14 +146,28 @@ Function Get-BambooEmployee {
         }
     }
     End {
-        if (-not ($PSBoundParameters.ContainsKey('id'))) {
-            $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
-            $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
-            foreach ($id in $employeeids) {
-                $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+        if ($UseMultiRequest){
+            if (-not ($PSBoundParameters.ContainsKey('id'))) {
+                $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
+                $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
+                foreach ($id in $employeeids) {
+                    $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+                }
+            }
+            Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
+        }
+        else{
+            $ReportRequest = New-BambooReportRequest -Properties $Fields -Subdomain $Subdomain -ApiKey $ApiKey
+            $Report = Get-BambooReport -ReportRequest $ReportRequest -Format JSON -Subdomain $Subdomain -ApiKey $ApiKey
+            $Fields = @('id')+$Report.fields.id
+            foreach ($item in $Report.employees){
+                $Employee = [ordered]@{}
+                foreach ($Field in $Fields){
+                    $Employee[$Field]=$item.$Field
+                }
+                [pscustomobject]$Employee
             }
         }
-        Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
     }
 }
 
@@ -270,14 +289,14 @@ Function Get-BambooJobInfoOnDate {
 }
 
 Function Get-BambooListItems{
-[CmdletBinding()]param(
-    [parameter(Mandatory = $true, ParameterSetName = 'Name')][string]$Name,
-    [parameter(Mandatory = $true, ParameterSetName = 'Alias')][string]$Alias,
-    [parameter(Mandatory = $true, ParameterSetName = 'FieldID')][int]$FieldID,
-    [switch]$IncludeArchived,
-    [parameter(Mandatory = $true)][string]$Subdomain,
-    [parameter(Mandatory = $true)][string]$ApiKey
-)
+    [CmdletBinding()]param(
+        [parameter(Mandatory = $true, ParameterSetName = 'Name')][string]$Name,
+        [parameter(Mandatory = $true, ParameterSetName = 'Alias')][string]$Alias,
+        [parameter(Mandatory = $true, ParameterSetName = 'FieldID')][int]$FieldID,
+        [switch]$IncludeArchived,
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][string]$ApiKey
+    )
 
     if ($PSCmdlet.ParameterSetName -eq 'FieldID'){
         $ApiCall = "meta/lists/$FieldID"
