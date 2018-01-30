@@ -41,7 +41,7 @@ Function Invoke-BambooAPI {
             }
             else {
                 $doTry = $false
-                Write-Error $_ -RecommendedAction Stop
+                Write-Error $_ -RecommendedAction Stop -TargetObject @{Method = $Method; Apicall = $ApiCall; Body = $Body}
             }
         }
     }
@@ -63,24 +63,32 @@ Function Get-BambooReport {
     [CmdletBinding()]param(
         [parameter(Mandatory = $true, ParameterSetName = 'ID')][int]$ReportId,
         [parameter(ParameterSetName = 'ID')][switch]$FilterDuplicates,
-        [parameter(ParameterSetName = 'Custom')][switch]$CustomReport,
         [parameter(Mandatory = $true, ParameterSetName = 'Custom')][string]$ReportRequest,
+        [ValidateSet('CSV','PDF','XLS','XML','JSON')][string]$Format = 'JSON',
+        [switch]$ReturnRawData,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][string]$ApiKey
     )
-    $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain}
+    $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain; ReturnRawData = $true}
     if ($PSCmdlet.ParameterSetName -eq 'ID') {
         $fdm = @{$true = 'yes'; $false = 'no'}
         $fd = $fdm[$([bool]$FilterDuplicates)]
-        $splat['ApiCall'] = "reports/${ReportId}/?format=json&fd=${fd}"
+        $splat['ApiCall'] = "reports/${ReportId}/?format=$Format&fd=${fd}"
     }
     if ($PSCmdlet.ParameterSetName -eq 'Custom') {
         $splat['Method'] = 'POST'
         $splat['Body'] = $ReportRequest
-        $splat['ApiCall'] = 'reports/custom?format=json'
+        $splat['ApiCall'] = "reports/custom?format=$Format"
     }
     
-    Invoke-BambooAPI @splat
+    $responce = Invoke-BambooAPI @splat
+    if (!$ReturnRawData){
+        switch($format){
+            'JSON' { return $(ConvertFrom-Json $responce) }
+            'XML' {return $([xml]$responce)}
+        }
+    }
+    return $responce
 }
 
 Function New-BambooReportRequest {
