@@ -74,6 +74,9 @@ Function Get-CertDecryptedString {
  .Parameter UseMachineStorage
   Use certificate in machine storage instead of user storage.
 
+ .Parameter AsSecureString
+  Return SecureString instead of String
+
   .Example
    # Decrypt string.
    $EncPw = 'dvSbHHCu1vHgM5DaDuGkJ2ax4v9dDmVNEuS3XAzXxoz1BJZ6P5rSrosJQIsTGN5SvVSLGZQDSeS9K3V656cN6Ip/rG2Sx+hWmfRi7WcLpASYVdPqpBfGwBm+JjtiDuVlwUJBTp2/lwev2UtE194SBtHzG/+Bn/O5FWL8yKWE1gVusOa5oiSb7kKNCGMblcV3PvGkOQ3/heUImIV1kjwqWhALh2xDTtKa6lu9BwxkPq/peXLcVpCyS3YRQ7BjkHKz4VzWY5ZXdx2mqXS5+0a8ccJUVEkPaWfUT9tzp7F1dhC4spMbyN2U2l0joE2gAui+93bXS6VrC2aARk6lSGYYnA=='
