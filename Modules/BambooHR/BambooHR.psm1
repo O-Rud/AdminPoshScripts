@@ -1,7 +1,7 @@
 Function Invoke-BambooAPI {
     [CmdletBinding()]param(
         [parameter(Mandatory = $true)][string]$ApiCall,
-        [parameter(Mandatory = $true)][string]$ApiKey,
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [Microsoft.PowerShell.Commands.WebRequestMethod]$Method = 'Get',
         [object]$Body,
@@ -11,7 +11,8 @@ Function Invoke-BambooAPI {
         [switch]$ReturnRawData
     )
     $secpasswd = ConvertTo-SecureString "x" -AsPlainText -Force
-    $mycreds = New-Object System.Management.Automation.PSCredential ($ApiKey, $secpasswd)
+    
+    $mycreds = New-Object System.Management.Automation.PSCredential ([Net.NetworkCredential]::new("u",$ApiKey).password, $secpasswd)
     $uri = "https://api.bamboohr.com/api/gateway.php/${Subdomain}/${ApiVer}/${ApiCall}"
     Write-Verbose "Uri: $uri"
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -19,7 +20,7 @@ Function Invoke-BambooAPI {
     $doTry = $true
     while ($doTry) {
         try {
-            $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true}
+            $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true; UseBasicParsing=$true}
             if ($PSBoundParameters.ContainsKey('Body')) {
                 $splat['Body'] = $Body
             }
@@ -51,7 +52,7 @@ Function Invoke-BambooAPI {
 workflow Invoke-BambooAPIParallelCalls {
     param (
         [string[]]$ApiCallList,
-        [string]$ApiKey,
+        [securestring]$ApiKey,
         [string]$Subdomain
     )
     foreach -parallel ($ApiCall in $ApiCallList) {
@@ -67,7 +68,7 @@ Function Get-BambooReport {
         [ValidateSet('CSV','PDF','XLS','XML','JSON')][string]$Format = 'JSON',
         [switch]$ReturnRawData,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain; ReturnRawData = $true}
     if ($PSCmdlet.ParameterSetName -eq 'ID') {
@@ -96,7 +97,7 @@ Function New-BambooReportRequest {
         [string[]]$Properties,
         [string]$Name = "CustomReport",
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     $fields = foreach ($Property in $Properties) {
         "<field id=`"$Property`" />"
@@ -106,12 +107,12 @@ Function New-BambooReportRequest {
 
 Function Get-BambooEmployee {
     [CmdletBinding()]param(
-        [parameter(ParameterSetName = 'id',ValueFromPipeline = $true,ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
+        [parameter(ParameterSetName = 'id',ValueFromPipeline = $true,ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int[]]$id,
         [string[]]$Properties,
         [switch]$IncludeNonameProperties,
         [parameter(ParameterSetName = 'id')][switch]$UseMultiRequest,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin {
         $ApiCallList = New-Object System.Collections.ArrayList
@@ -139,10 +140,11 @@ Function Get-BambooEmployee {
             $Fields = $DefaultFields + $Properties | Select-Object -Unique | Sort-Object
         }
         $Fieldlist = $Fields -join ","
+        [collections.arraylist]$ids = $id
     }
     process {
         if ($PSBoundParameters.ContainsKey('id')) {
-            $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+            $ids += $id
         }
     }
     End {
@@ -153,7 +155,11 @@ Function Get-BambooEmployee {
                 foreach ($id in $employeeids) {
                     $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
                 }
-            }
+            } else {
+                foreach ($id in $ids){
+                    $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
+                }
+             }
             Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
         }
         else{
@@ -165,7 +171,9 @@ Function Get-BambooEmployee {
                 foreach ($Field in $Fields){
                     $Employee[$Field]=$item.$Field
                 }
-                [pscustomobject]$Employee
+                if ((-not ($PSBoundParameters.ContainsKey('id')) -or ($ids -contains $Employee.id))){
+                    [pscustomobject]$Employee
+                }
             }
         }
     }
@@ -177,7 +185,7 @@ Function Get-BambooEmployeeTable {
         [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
         [switch]$RequireRowIds,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin {
         $ApiCallList = New-Object System.Collections.ArrayList
@@ -216,7 +224,7 @@ Function Get-BambooEmployeeTable {
 Function Get-BambooDirectory {
     [CmdletBinding()]param(
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey,
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
         [switch]$ReturnFieldlist
     )
     $ApiCall = "employees/directory"
@@ -236,7 +244,7 @@ Function Get-BambooTimeOffRequests {
         [ValidateSet('approved', 'denied', 'superceded', 'requested', 'canceled')][string]$Status,
         [ValidateSet("view", "approve")][string]$Action,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     $Filter = @{}
     if ($PSBoundParameters.ContainsKey('RequestId')) {
@@ -274,7 +282,7 @@ Function Get-BambooJobInfoOnDate {
         [parameter(Mandatory = $true, ParameterSetName = 'Cached')][array]$Jobinfo,
         [parameter(Mandatory = $true)][datetime]$date,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     if ($PSCmdlet.ParameterSetName -eq 'Online') {
         $Jobinfo = Get-BambooEmployeeTable -id $EmployeeId -TableName 'jobInfo' -Subdomain $Subdomain -ApiKey $ApiKey
@@ -295,7 +303,7 @@ Function Get-BambooListItems{
         [parameter(Mandatory = $true, ParameterSetName = 'FieldID')][int]$FieldID,
         [switch]$IncludeArchived,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
 
     if ($PSCmdlet.ParameterSetName -eq 'FieldID'){
@@ -318,7 +326,7 @@ Function Set-BambooEmployee {
         [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [hashtable]$Replace,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
@@ -338,7 +346,7 @@ Function Set-BambooListItem{
         [parameter(ValueFromPipelineByPropertyName)][int]$ItemId,
         [parameter(ValueFromPipelineByPropertyName)][String]$ItemValue,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin{
         [collections.ArrayList]$Options = @()
@@ -358,7 +366,7 @@ Function Add-BambooListItem{
         [parameter(Mandatory=$true)][int]$ListId,
         [parameter(ValueFromPipeline=$true)][String]$ItemValue,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin{
         [collections.ArrayList]$Options = @()
@@ -380,7 +388,7 @@ Function Set-BambooEmployeeTableRow{
         [parameter(Mandatory = $true)][int]$RowId,
         [hashtable]$Replace,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][string]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
