@@ -107,37 +107,147 @@ Function Get-SQLTableColumns{
     $result
 }
 
+Function New-SQLScriptOptions{
+    param(
+        [bool]$ExtendedProperties= $true,
+        [bool]$DRIAll= $true,
+        [bool]$Indexes= $true,
+        [bool]$Triggers= $true,
+        [bool]$ScriptBatchTerminator = $true,
+        [bool]$IncludeHeaders = $true,
+        [bool]$ToFileOnly = $true,
+        [switch]$IncludeIfNotExists,
+        [switch]$WithDependencies,
+        [bool]$IncludeDatabaseRoleMemberships = $true,
+        [bool]$Permissions = $true,
+        [string]$Filename
+    )
+    $Options = [Microsoft.SqlServer.Management.SMO.ScriptingOptions]::New()
+    foreach ($parameter in $MyInvocation.MyCommand.Parameters.keys){
+        $Value = Get-Variable $parameter
+        if ($PSBoundParameters.ContainsKey($parameter) -or ($Value -ne $null -and $value -ne ""))
+            {
+                $Options.$parameter = $Value.Value
+            }
+    }
+        
+    return $Options
+}
+
 Function Export-SQLDatabaseScripts{
+    [CmdletBinding()]
     param(
         [parameter (Mandatory = $true)][string]$Server,
         [parameter (Mandatory = $true)][string]$Database,
-        [parameter (Mandatory = $true)]$Path
+        [parameter (Mandatory = $true)]$OutputFolderPath,
+        [string[]]$StaticDataTableNames,
+        [switch]$ScriptDrops
     )
     
     set-psdebug -strict
     $ErrorActionPreference = "stop" 
-    $Assembly = [System.Reflection.Assembly]::LoadWithPartialName( "Microsoft.SqlServer.SMO")
-    if ($Assembly.Evidence.version.major -gt 9) {
-        $null = [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.SMOExtended")
-    }
+    
+    $DefaultObjects = @(
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'public'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_owner'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_accessadmin'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_securityadmin'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_ddladmin'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_backupoperator'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_datareader'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_datawriter'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_denydatareader'}
+        @{DatabaseObjectTypes = 'DatabaseRole'; Name = 'db_denydatawriter'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'DEFAULT'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/Notifications/EventNotification'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/Notifications/QueryNotification'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice/FailedRemoteServiceBinding'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice/FailedRoute'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice/MissingRemoteServiceBinding'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice/MissingRoute'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/DialogTimer'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/Error'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic/Description'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic/Query'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic/Status'}
+        @{DatabaseObjectTypes = 'MessageType'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceEcho/Echo'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'dbo'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'guest'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'INFORMATION_SCHEMA'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'sys'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_owner'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_accessadmin'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_securityadmin'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_ddladmin'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_backupoperator'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_datareader'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_datawriter'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_denydatareader'}
+        @{DatabaseObjectTypes = 'Schema'; Name = 'db_denydatawriter'}
+        @{DatabaseObjectTypes = 'ServiceBroker'; Name = ''}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'DEFAULT'}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'http://schemas.microsoft.com/SQL/Notifications/PostEventNotification'}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'http://schemas.microsoft.com/SQL/Notifications/PostQueryNotification'}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice'}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic'}
+        @{DatabaseObjectTypes = 'ServiceContract'; Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceEcho'}
+        @{DatabaseObjectTypes = 'ServiceQueue'; Name = 'QueryNotificationErrorsQueue'}
+        @{DatabaseObjectTypes = 'ServiceQueue'; Name = 'EventNotificationErrorsQueue'}
+        @{DatabaseObjectTypes = 'ServiceQueue'; Name = 'ServiceBrokerQueue'}
+        @{DatabaseObjectTypes = 'ServiceRoute'; Name = 'AutoCreatedLocal'}
+        @{DatabaseObjectTypes = 'SqlAssembly'; Name = 'Microsoft.SqlServer.Types'}
+        @{DatabaseObjectTypes = 'User'; Name = 'dbo'}
+        @{DatabaseObjectTypes = 'User'; Name = 'guest'}
+        @{DatabaseObjectTypes = 'User'; Name = 'INFORMATION_SCHEMA'}
+        @{DatabaseObjectTypes = 'User'; Name = 'sys'}
+    ) | ForEach-Object {[pscustomobject]$_}
     
     $SQLServer = [Microsoft.SqlServer.Management.Smo.Server]::new($Server)
     if ($SQLServer.Version -eq  $null ){Throw "Can't find the instance $Server"}
     $db = $SQLServer.Databases[$Database] 
     if ($db.name -ne $Database){Throw "Can't find the database '$Database' in $Server"};
-    $Filename = "$($Database)_Build.sql"
-    if (-not $(Test-path $path)) {mkdir $path}
-    $CreationScriptOptions = [Microsoft.SqlServer.Management.SMO.ScriptingOptions]::New()
-    $CreationScriptOptions.ExtendedProperties= $true
-    $CreationScriptOptions.DRIAll= $true
-    $CreationScriptOptions.Indexes= $true
-    $CreationScriptOptions.Triggers= $true
-    $CreationScriptOptions.ScriptBatchTerminator = $true
-    $CreationScriptOptions.IncludeHeaders = $true;
-    $CreationScriptOptions.ToFileOnly = $true
-    $CreationScriptOptions.IncludeIfNotExists = $true
-    $CreationScriptOptions.Filename = Join-Path $Path $FileName;
-    $transfer = [Microsoft.SqlServer.Management.Smo.Transfer]::new($db)
-    $transfer.Options = $CreationScriptOptions
-    $transfer.ScriptTransfer() 
+    $Filename = "$($Database)_Database.sql"
+    $FilePath = Join-Path $OutputFolderPath $FileName;
+    if (-not $(Test-path $OutputFolderPath)) {mkdir $OutputFolderPath}
+    $Scripter = [Microsoft.SqlServer.Management.Smo.Scripter]::New($SQLServer)
+    $ScriptOptions = New-SQLScriptOptions -Filename $FilePath
+    $Scripter.Options = $ScriptOptions
+    $Scripter.Script($SQLServer.databases[$Database])
+    $all = [long][Microsoft.SqlServer.Management.Smo.DatabaseObjectTypes]::all `
+        -bxor [Microsoft.SqlServer.Management.Smo.DatabaseObjectTypes]::ExtendedStoredProcedure
+    $DBObjects=$SQLServer.databases[$Database].EnumObjects([long]0x1FFFFFFF -band $all) | Where-Object {('sys',"information_schema") -notcontains $_.Schema}
+    $ToScript = Compare-Object $DBObjects $DefaultObjects -Property Name, DatabaseObjectTypes -PassThru | Where-Object {$_.SideIndicator -eq '<='}
+    [collections.arraylist]$TablesToExport = @()
+    # foreach ($item in $ToScript){
+    #     if ($Item.DatabaseObjectTypes -eq 'Table'){
+    #         foreach ($tn in $StaticDataTableNames){
+    #             $TableName = $tn.trim() -split '.',0,'SimpleMatch'
+    #             switch ($TableName.count)
+    #             { 
+    #               1 { $obj = [pscustomobject]@{database=$database; Schema='dbo'; Table=$tablename[0]};  break}
+    #               2 { $obj = [pscustomobject]@{database=$database; Schema=$tablename[0]; Table=$tablename[1]};  break}
+    #               3 { $obj = [pscustomobject]@{database=$tablename[0]; Schema=$tablename[1]; Table=$tablename[2]};  break}
+    #               default {throw 'too many dots in the tablename'}
+    #             }
+    #         }
+    #     }
+    # }
+    foreach ($item in $ToScript){
+        $ObjectType = $item.DatabaseObjectTypes
+        $ObjectName = $item.Name -replace '[\\\/\:\.]','-'
+        $Filename = "$($Database)_$($ObjectType)_$($ObjectName).sql"
+        $FilePath = Join-Path $OutputFolderPath $FileName
+        $scripter.Options.Filename = $FilePath
+        $UrnCollection = [Microsoft.SqlServer.Management.Smo.urnCollection]::new()
+        $URNCollection.add($item.urn)
+        $scripter.script($URNCollection)
+    }
+
+
+}
+
+$Assembly = [System.Reflection.Assembly]::LoadWithPartialName( "Microsoft.SqlServer.SMO")
+if ($Assembly.Evidence.version.major -gt 9) {
+    $null = [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.SMOExtended")
 }
