@@ -218,21 +218,6 @@ Function Export-SQLDatabaseScripts{
         -bxor [Microsoft.SqlServer.Management.Smo.DatabaseObjectTypes]::ExtendedStoredProcedure
     $DBObjects=$SQLServer.databases[$Database].EnumObjects([long]0x1FFFFFFF -band $all) | Where-Object {('sys',"information_schema") -notcontains $_.Schema}
     $ToScript = Compare-Object $DBObjects $DefaultObjects -Property Name, DatabaseObjectTypes -PassThru | Where-Object {$_.SideIndicator -eq '<='}
-    [collections.arraylist]$TablesToExport = @()
-    # foreach ($item in $ToScript){
-    #     if ($Item.DatabaseObjectTypes -eq 'Table'){
-    #         foreach ($tn in $StaticDataTableNames){
-    #             $TableName = $tn.trim() -split '.',0,'SimpleMatch'
-    #             switch ($TableName.count)
-    #             { 
-    #               1 { $obj = [pscustomobject]@{database=$database; Schema='dbo'; Table=$tablename[0]};  break}
-    #               2 { $obj = [pscustomobject]@{database=$database; Schema=$tablename[0]; Table=$tablename[1]};  break}
-    #               3 { $obj = [pscustomobject]@{database=$tablename[0]; Schema=$tablename[1]; Table=$tablename[2]};  break}
-    #               default {throw 'too many dots in the tablename'}
-    #             }
-    #         }
-    #     }
-    # }
     foreach ($item in $ToScript){
         $ObjectType = $item.DatabaseObjectTypes
         $ObjectName = $item.Name -replace '[\\\/\:\.]','-'
@@ -243,8 +228,31 @@ Function Export-SQLDatabaseScripts{
         $URNCollection.add($item.urn)
         $scripter.script($URNCollection)
     }
-
-
+    
+    $UrnCollection = [Microsoft.SqlServer.Management.Smo.urnCollection]::new()
+    $Filename = "$($Database)_StaticData.sql"
+    $FilePath = Join-Path $OutputFolderPath $FileName
+    $scripter.Options.Filename = $FilePath
+    $scripter.Options.ScriptSchema = $False;
+    $scripter.Options.ScriptData = $true;
+    foreach ($item in $ToScript){
+        if ($Item.DatabaseObjectTypes -eq 'Table'){
+            foreach ($tn in $StaticDataTableNames){
+                $TableName = $tn.trim() -split '.',0,'SimpleMatch'
+                switch ($TableName.count)
+                { 
+                   1 { $obj = [pscustomobject]@{database=$database; Schema='dbo'; Table=$tablename[0]};  break}
+                   2 { $obj = [pscustomobject]@{database=$database; Schema=$tablename[0]; Table=$tablename[1]};  break}
+                   3 { $obj = [pscustomobject]@{database=$tablename[0]; Schema=$tablename[1]; Table=$tablename[2]};  break}
+                   default {throw 'too many dots in the tablename'}
+                }
+                if ($Item.name -like $obj.table -and $Item.Schema -like $obj.Schema){
+                    $UrnCollection.add($Item.urn)
+                }
+           }
+        }
+    }
+    $Scripter.EnumScript($UrnCollection)
 }
 
 $Assembly = [System.Reflection.Assembly]::LoadWithPartialName( "Microsoft.SqlServer.SMO")
