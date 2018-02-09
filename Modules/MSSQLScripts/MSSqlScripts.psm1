@@ -141,7 +141,9 @@ Function Export-SQLDatabaseScripts{
         [parameter (Mandatory = $true)][string]$Database,
         [parameter (Mandatory = $true)]$OutputFolderPath,
         [string[]]$StaticDataTableNames,
-        [switch]$ScriptDrops
+        [switch]$ScriptDrops,
+        [bool]$AddNumericPrefix = $true,
+        [int]$PrefixDigits=3
     )
     
     set-psdebug -strict
@@ -207,7 +209,12 @@ Function Export-SQLDatabaseScripts{
     if ($SQLServer.Version -eq  $null ){Throw "Can't find the instance $Server"}
     $db = $SQLServer.Databases[$Database] 
     if ($db.name -ne $Database){Throw "Can't find the database '$Database' in $Server"};
-    $Filename = "$($Database)_Database.sql"
+    if ($AddNumericPrefix){
+        $prefixpattern = "0"*$PrefixDigits
+        $counter = 0
+        $prefix = "$($counter.tostring($prefixpattern))_"
+        } else {$prefix = ""}
+    $Filename = "$prefix$($Database)_Database.sql"
     $FilePath = Join-Path $OutputFolderPath $FileName;
     if (-not $(Test-path $OutputFolderPath)) {mkdir $OutputFolderPath}
     $Scripter = [Microsoft.SqlServer.Management.Smo.Scripter]::New($SQLServer)
@@ -217,20 +224,31 @@ Function Export-SQLDatabaseScripts{
     $all = [long][Microsoft.SqlServer.Management.Smo.DatabaseObjectTypes]::all `
         -bxor [Microsoft.SqlServer.Management.Smo.DatabaseObjectTypes]::ExtendedStoredProcedure
     $DBObjects=$SQLServer.databases[$Database].EnumObjects([long]0x1FFFFFFF -band $all) | Where-Object {('sys',"information_schema") -notcontains $_.Schema}
-    $ToScript = Compare-Object $DBObjects $DefaultObjects -Property Name, DatabaseObjectTypes -PassThru | Where-Object {$_.SideIndicator -eq '<='}
+    $ToScript = Compare-Object $DBObjects $DefaultObjects -Property Name, DatabaseObjectTypes -PassThru | Where-Object {$_.SideIndicator -eq '<='}`
+        | Select-Object *, @{n='objectId';e={$SQLServer.GetSmoObject($_.urn).id}} | Sort-Object -Property DatabaseObjectTypes, objectId
     foreach ($item in $ToScript){
+        if ($AddNumericPrefix){
+            $counter = $counter + 1
+            $prefix = "$($counter.tostring($prefixpattern))_"
+        } else {
+            $prefix = ""
+        }
         $ObjectType = $item.DatabaseObjectTypes
         $ObjectName = $item.Name -replace '[\\\/\:\.]','-'
-        $Filename = "$($Database)_$($ObjectType)_$($ObjectName).sql"
+        $Filename = "$prefix$($Database)_$($ObjectType)_$($ObjectName).sql"
         $FilePath = Join-Path $OutputFolderPath $FileName
         $scripter.Options.Filename = $FilePath
         $UrnCollection = [Microsoft.SqlServer.Management.Smo.urnCollection]::new()
         $URNCollection.add($item.urn)
         $scripter.script($URNCollection)
     }
-    
     $UrnCollection = [Microsoft.SqlServer.Management.Smo.urnCollection]::new()
-    $Filename = "$($Database)_StaticData.sql"
+    if ($AddNumericPrefix){
+        $prefix = "$("9"*$PrefixDigits)_"
+    } else {
+        $prefix = ""
+    }
+    $Filename = "$prefix$($Database)_StaticData.sql"
     $FilePath = Join-Path $OutputFolderPath $FileName
     $scripter.Options.Filename = $FilePath
     $scripter.Options.ScriptSchema = $False;
