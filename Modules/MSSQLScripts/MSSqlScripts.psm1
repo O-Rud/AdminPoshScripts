@@ -92,17 +92,31 @@ Function Get-SQLTableColumns{
     )
     $params = @{}
     foreach ($Tablename in $Tablenames){
-        $params["Table$($Tablenames.IndexOf($Tablename))"]=$Tablename
+        $TablePath = @($Tablename -split "[\.](?![^[]*])")
+        $cnt = $TablePath.count
+        if ($cnt -gt 4) {Write-Error -Message "Wrong tablename syntax in: $tablename" -TargetObject $Tablename -ErrorAction Stop}
+        [array]::Reverse($TablePath)
+        $TableInfo = [pscustomobject][ordered]@{
+            Server = $(if($cnt -gt 3){$TablePath[3].trim("[]")} else {$SqlServer})
+            Database = $(if($cnt -gt 2){$TablePath[2].trim("[]")} else {$Database})
+            Schema = $(if($cnt -gt 1){$TablePath[1].trim("[]")} else {"dbo"})
+            Table = $TablePath[0].trim("[]")
+        }
+        $params["Table$($Tablenames.IndexOf($Tablename))"]="$($TableInfo.Database).$($TableInfo.Schema).$($TableInfo.Table)"
     }
-    $Query = "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME in ($(($params.keys | foreach-object {"@$_"}) -join " ,"))"
-    $Dbf = Invoke-SQLQuery -server $SqlServer -base $Database -text $Query -params $params | Select-Object TABLE_NAME, COLUMN_NAME, DATA_TYPE | Group-Object TABLE_NAME
+    $Query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE concat(TABLE_CATALOG, '.', TABLE_SCHEMA,'.', TABLE_NAME) in
+                ($(($params.keys | foreach-object {"@$_"}) -join " ,"))"
+    $Dbf = Invoke-SQLQuery -server $SqlServer -base $Database -text $Query -params $params | Select-Object TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE | Group-Object TABLE_SCHEMA, TABLE_NAME
     $result = @{}
     foreach ($table in $Dbf){
+        $ResultKey = "$($table.group[0].TABLE_SCHEMA).$($table.group[0].TABLE_NAME)"
         $columns = @{}
         foreach($column in $table.group){
             $columns[$column.COLUMN_NAME]=$column.DATA_TYPE
         }
-        $result[$table.name]=$columns
+        $result[$ResultKey]=$columns
     }
     $result
 }
