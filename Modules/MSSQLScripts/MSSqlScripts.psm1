@@ -54,7 +54,7 @@ Function Invoke-SQLQuery {
         $Connection.Close()
     }
     if ($ReturnDataset) {return $DataSet}
-    Else {$dataset.tables | % {$_.rows}}
+    Else {$dataset.tables | ForEach-Object {$_.rows}}
     trap {
         if ($Connection.State -ne 'Closed') {
             $Connection.Close()
