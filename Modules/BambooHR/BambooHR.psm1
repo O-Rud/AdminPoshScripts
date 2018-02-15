@@ -183,7 +183,6 @@ Function Get-BambooEmployeeTable {
     [CmdletBinding()]param(
         [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
         [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
-        [switch]$RequireRowIds,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][securestring]$ApiKey
     )
@@ -197,23 +196,8 @@ Function Get-BambooEmployeeTable {
     }
     End {
         if (-not ($PSBoundParameters.ContainsKey('id'))) {
-            if ($RequireRowIds){
-                $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
-                $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
-                foreach ($id in $employeeids) {
-                    $null = $ApiCallList.Add("employees/${id}/tables/$Tablename")
-                }
-                Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
-            }
-            $apiCall = "employees/changed/tables/$($TableName)?since=2000-01-01T00:00:00Z"
-            $res = Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
-            $Ids = $res.employees | Get-Member -MemberType noteproperty | ForEach-Object {[int]$($_.name)} | Sort-Object
-            foreach ($id in $Ids){
-                foreach ($row in $($res.employees.$id).rows){
-                    $row | Select-Object @{n='employeeid';e={$id}},*
-                }
-            }
-
+            $apiCall = "employees/all/tables/$($TableName)"
+            Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
         } else {
             Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
 
