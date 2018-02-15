@@ -104,17 +104,25 @@ Function Get-SQLTableColumns{
         }
         $params["Table$($Tablenames.IndexOf($Tablename))"]="$($TableInfo.Database).$($TableInfo.Schema).$($TableInfo.Table)"
     }
-    $Query = "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE concat(TABLE_CATALOG, '.', TABLE_SCHEMA,'.', TABLE_NAME) in
-                ($(($params.keys | foreach-object {"@$_"}) -join " ,"))"
-    $Dbf = Invoke-SQLQuery -server $SqlServer -base $Database -text $Query -params $params | Select-Object TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE | Group-Object TABLE_SCHEMA, TABLE_NAME
-    $result = @{}
+    $Query = "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, tc.CONSTRAINT_TYPE
+    FROM INFORMATION_SCHEMA.COLUMNS c
+    left join INFORMATION_SCHEMA.KEY_COLUMN_USAGE cu on c.TABLE_CATALOG = cu.TABLE_CATALOG
+        and c.TABLE_SCHEMA = cu.TABLE_SCHEMA
+        and c.TABLE_NAME = cu.TABLE_NAME
+        and c.COLUMN_NAME = cu.COLUMN_NAME
+    left join INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc on tc.CONSTRAINT_CATALOG = cu.CONSTRAINT_CATALOG
+        and tc.CONSTRAINT_SCHEMA = cu.CONSTRAINT_SCHEMA
+        and tc.CONSTRAINT_NAME = cu.CONSTRAINT_NAME
+    WHERE concat(c.TABLE_CATALOG, '.', c.TABLE_SCHEMA,'.', c.TABLE_NAME) in
+    ($(($params.keys | foreach-object {"@$_"}) -join " ,"))
+    order by c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION"
+    $Dbf = Invoke-SQLQuery -server $SqlServer -base $Database -text $Query -params $params | Select-Object TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE, CONSTRAINT_TYPE | Group-Object TABLE_SCHEMA, TABLE_NAME
+    $result = [ordered]@{}
     foreach ($table in $Dbf){
         $ResultKey = "$($table.group[0].TABLE_SCHEMA).$($table.group[0].TABLE_NAME)"
-        $columns = @{}
+        $columns = [ordered]@{}
         foreach($column in $table.group){
-            $columns[$column.COLUMN_NAME]=$column.DATA_TYPE
+            $columns[$column.COLUMN_NAME]=$column
         }
         $result[$ResultKey]=$columns
     }
