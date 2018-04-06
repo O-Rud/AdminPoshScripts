@@ -280,6 +280,68 @@ Function Get-BambooJobInfoOnDate {
     }
 }
 
+Function Get-BambooMetadata{
+    [CmdletBinding()]param(
+        [parameter(Mandatory = $true)][string]$Subdomain,
+        [parameter(Mandatory = $true)][securestring]$ApiKey
+    )
+    $Fields = Invoke-BambooAPI 'meta/fields' -ApiKey $ApiKey -Subdomain $Subdomain
+    $Lists = Invoke-BambooAPI 'meta/lists' -ApiKey $ApiKey -Subdomain $Subdomain
+    [xml]$Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData
+    $metadata = @{}
+    foreach ($Field in $Fields){
+        $metadata[$field.id.tostring()]=[pscustomobject]@{
+            id=$field.id.tostring()
+            Name = $Field.name
+            datatype = $Field.type
+            alias = $Field.alias
+            FieldType = 'Field'
+            ParentObject = 'Employee'
+            
+        }
+    }
+
+    foreach ($List in $lists){
+        if(!$metadata.ContainsKey($list.fieldId.tostring())){
+            $metadata[$field.id.tostring()]=[pscustomobject]@{
+                id=$list.fieldId.tostring()
+                Name = $list.Name
+                datatype = 'list'
+                alias = $list.alias
+                FieldType = 'List'
+                ParentObject = 'Employee'
+                
+            }
+        } else{
+            $metadata[$list.fieldId.tostring()].alias = $list.alias
+            $metadata[$list.fieldId.tostring()].Name = $list.Name
+            $metadata[$list.fieldId.tostring()].FieldType = 'List'
+        }
+    }
+
+    foreach ($table in $tables.tables.table){
+        foreach ($field in $table.field){
+            if(!$metadata.ContainsKey($field.id.tostring())){
+                $metadata[$field.id.tostring()]=[pscustomobject]@{
+                    id=$field.id.tostring()
+                    Name = $Field.'#text'
+                    datatype = $Field.type
+                    alias = $Field.alias
+                    FieldType = 'TableColumn'
+                    ParentObject = $table.Alias
+                }
+            } else{
+                $metadata[$field.id.tostring()].alias = $field.alias
+                $metadata[$field.id.tostring()].Name = $Field.'#text'
+                $metadata[$field.id.tostring()].datatype = $Field.type
+                $metadata[$field.id.tostring()].FieldType = 'TableColumn'
+                $metadata[$field.id.tostring()].ParentObject = $table.Alias
+            }
+        }
+    }
+return $metadata
+}
+
 Function Get-BambooListItems{
     [CmdletBinding()]param(
         [parameter(Mandatory = $true, ParameterSetName = 'Name')][string]$Name,
@@ -376,7 +438,11 @@ Function Set-BambooEmployeeTableRow{
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
-            "<field id=`"$key`">$($Replace[$key])</field>"
+            $Value = $Replace[$key]
+            if ($Value -is [datetime]){
+                $value = $Value.ToString('yyyy-MM-dd')
+            }
+            "<field id=`"$key`">$Value</field>"
         }
         $Body = "<row>$($Fields -join '')</row>"
     }
