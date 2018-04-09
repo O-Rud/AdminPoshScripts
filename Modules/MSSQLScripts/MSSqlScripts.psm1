@@ -136,12 +136,13 @@ Function New-SQLScriptOptions{
         [bool]$Indexes= $true,
         [bool]$Triggers= $true,
         [bool]$ScriptBatchTerminator = $true,
-        [bool]$IncludeHeaders = $true,
+        [bool]$IncludeHeaders = $false,
         [bool]$ToFileOnly = $true,
         [switch]$IncludeIfNotExists,
         [switch]$WithDependencies,
         [bool]$IncludeDatabaseRoleMemberships = $true,
         [bool]$Permissions = $true,
+        [Text.Encoding]$Encoding = [text.encoding]::UTF8,
         [string]$Filename
     )
     $Options = [Microsoft.SqlServer.Management.SMO.ScriptingOptions]::New()
