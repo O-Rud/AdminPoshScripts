@@ -136,6 +136,7 @@ Function New-SQLScriptOptions{
         [bool]$Indexes= $true,
         [bool]$Triggers= $true,
         [bool]$ScriptBatchTerminator = $true,
+        [bool]$IncludeDatabaseContext = $true,
         [bool]$IncludeHeaders = $false,
         [bool]$ToFileOnly = $true,
         [switch]$IncludeIfNotExists,
