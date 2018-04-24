@@ -8,7 +8,8 @@ Function Invoke-BambooAPI {
         [int]$MaxRetryCount = 5,
         [int]$RetryDelay = 100,
         [string]$ApiVer = 'v1',
-        [switch]$ReturnRawData
+        [switch]$ReturnRawData,
+        [string]$Proxy
     )
     $secpasswd = ConvertTo-SecureString "x" -AsPlainText -Force
     
@@ -23,6 +24,11 @@ Function Invoke-BambooAPI {
             $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true; UseBasicParsing=$true}
             if ($PSBoundParameters.ContainsKey('Body')) {
                 $splat['Body'] = $Body
+            }
+            if ($PSBoundParameters.ContainsKey('Proxy')) {
+                if ($Proxy -ne ""){
+                    $splat['Proxy'] = $Proxy
+                }
             }
             $Responce = Invoke-WebRequest @Splat
             $Data = $Responce.content
@@ -53,10 +59,11 @@ workflow Invoke-BambooAPIParallelCalls {
     param (
         [string[]]$ApiCallList,
         [securestring]$ApiKey,
-        [string]$Subdomain
+        [string]$Subdomain,
+        [string]$Proxy
     )
     foreach -parallel ($ApiCall in $ApiCallList) {
-        Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
+        Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey -Proxy $Proxy
     }
 }
 
@@ -68,9 +75,10 @@ Function Get-BambooReport {
         [ValidateSet('CSV','PDF','XLS','XML','JSON')][string]$Format = 'JSON',
         [switch]$ReturnRawData,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
-    $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain; ReturnRawData = $true}
+    $splat = @{ApiKey = $ApiKey; Subdomain = $Subdomain; ReturnRawData = $true; Proxy = $proxy}
     if ($PSCmdlet.ParameterSetName -eq 'ID') {
         $fdm = @{$true = 'yes'; $false = 'no'}
         $fd = $fdm[$([bool]$FilterDuplicates)]
@@ -95,9 +103,7 @@ Function Get-BambooReport {
 Function New-BambooReportRequest {
     [CmdletBinding()]param(
         [string[]]$Properties,
-        [string]$Name = "CustomReport",
-        [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [string]$Name = "CustomReport"
     )
     $fields = foreach ($Property in $Properties) {
         "<field id=`"$Property`" />"
@@ -112,13 +118,14 @@ Function Get-BambooEmployee {
         [switch]$IncludeNonameProperties,
         [parameter(ParameterSetName = 'id')][switch]$UseMultiRequest,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin {
         $ApiCallList = New-Object System.Collections.ArrayList
         if ($Properties -contains '*') {
             $StandardFields = @("address1", "address2", "age", "bestEmail", "birthday", "city", "country", "dateOfBirth", "department", "division", "eeo", "employeeNumber", "employmentHistoryStatus", "ethnicity", "exempt", "firstName", "flsaCode", "fullName1", "fullName2", "fullName3", "fullName4", "fullName5", "displayName", "gender", "hireDate", "originalHireDate", "homeEmail", "homePhone", "id", "jobTitle", "lastChanged", "lastName", "location", "maritalStatus", "middleName", "mobilePhone", "payChangeReason", "payGroup", "payGroupId", "payRate", "payRateEffectiveDate", "payType", "payPer", "paidPer", "paySchedule", "payScheduleId", "payFrequency", "includeInPayroll", "preferredName", "ssn", "sin", "state", "stateCode", "status", "supervisor", "supervisorId", "supervisorEId", "terminationDate", "workEmail", "workPhone", "workPhonePlusExtension", "workPhoneExtension", "zipcode", "isPhotoUploaded", "standardHoursPerWeek", "bonusDate", "bonusAmount", "bonusReason", "bonusComment", "commissionDate", "commisionDate", "commissionAmount", "commissionComment")
-            $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain
+            $FieldsMetadata = Invoke-BambooAPI -ApiCall "meta/fields/" -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
             $CustomFields = foreach($Metadata in $FieldsMetadata) {
                     if ([string]$($Metadata.alias) -ne '') {
                         if($UseMultiRequest){
@@ -150,7 +157,7 @@ Function Get-BambooEmployee {
     End {
         if ($UseMultiRequest){
             if (-not ($PSBoundParameters.ContainsKey('id'))) {
-                $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey
+                $ChangeList = Invoke-BambooAPI -ApiCall "employees/changed/?since=2000-01-01T00:00:00Z" -Subdomain $Subdomain -ApiKey $ApiKey -Proxy $Proxy
                 $employeeids = ($ChangeList.employees | Get-Member -MemberType NoteProperty).name | Where-Object {$ChangeList.employees.$_.action -ne 'deleted'}
                 foreach ($id in $employeeids) {
                     $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
@@ -160,10 +167,10 @@ Function Get-BambooEmployee {
                     $null = $ApiCallList.Add("employees/${id}?fields=${Fieldlist}")
                 }
              }
-            Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
+            Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
         }
         else{
-            $ReportRequest = New-BambooReportRequest -Properties $Fields -Subdomain $Subdomain -ApiKey $ApiKey
+            $ReportRequest = New-BambooReportRequest -Properties $Fields
             $Report = Get-BambooReport -ReportRequest $ReportRequest -Format JSON -Subdomain $Subdomain -ApiKey $ApiKey
             $Fields = @('id')+$Report.fields.id
             foreach ($item in $Report.employees){
@@ -184,7 +191,8 @@ Function Get-BambooEmployeeTable {
         [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName=$true)][Alias('employeeId')][int]$id,
         [parameter(Mandatory = $true)][ValidatePattern("^[a-zA-Z\d]+$")][string]$TableName,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin {
         $ApiCallList = New-Object System.Collections.ArrayList
@@ -197,10 +205,9 @@ Function Get-BambooEmployeeTable {
     End {
         if (-not ($PSBoundParameters.ContainsKey('id'))) {
             $apiCall = "employees/all/tables/$($TableName)"
-            Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey
+            Invoke-BambooAPI -ApiCall $ApiCall -Subdomain $Subdomain -ApiKey $ApiKey -Proxy $Proxy
         } else {
-            Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain
-
+            Invoke-BambooAPIParallelCalls -ApiCallList $ApiCallList -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
         }
     }
 }
@@ -209,10 +216,11 @@ Function Get-BambooDirectory {
     [CmdletBinding()]param(
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][securestring]$ApiKey,
-        [switch]$ReturnFieldlist
+        [switch]$ReturnFieldlist,
+        [string]$Proxy
     )
     $ApiCall = "employees/directory"
-    $result = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+    $result = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
     if ($ReturnFieldlist) { $result} else {
         $result.employees
     }
@@ -228,7 +236,8 @@ Function Get-BambooTimeOffRequests {
         [ValidateSet('approved', 'denied', 'superceded', 'requested', 'canceled')][string]$Status,
         [ValidateSet("view", "approve")][string]$Action,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     $Filter = @{}
     if ($PSBoundParameters.ContainsKey('RequestId')) {
@@ -257,7 +266,7 @@ Function Get-BambooTimeOffRequests {
         $FilterString = "?$($Filterlist -join '&')"
     }
     $ApiCall = "time_off/requests/$FilterString"
-    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
 }
 
 Function Get-BambooJobInfoOnDate {
@@ -266,10 +275,11 @@ Function Get-BambooJobInfoOnDate {
         [parameter(Mandatory = $true, ParameterSetName = 'Cached')][array]$Jobinfo,
         [parameter(Mandatory = $true)][datetime]$date,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     if ($PSCmdlet.ParameterSetName -eq 'Online') {
-        $Jobinfo = Get-BambooEmployeeTable -id $EmployeeId -TableName 'jobInfo' -Subdomain $Subdomain -ApiKey $ApiKey
+        $Jobinfo = Get-BambooEmployeeTable -id $EmployeeId -TableName 'jobInfo' -Subdomain $Subdomain -ApiKey $ApiKey -Proxy $proxy
     }
     $JobInfo = $Jobinfo | Sort-Object -Property date -Descending
     foreach ($item in $Jobinfo) {
@@ -283,11 +293,12 @@ Function Get-BambooJobInfoOnDate {
 Function Get-BambooMetadata{
     [CmdletBinding()]param(
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
-    $Fields = Invoke-BambooAPI 'meta/fields' -ApiKey $ApiKey -Subdomain $Subdomain
-    $Lists = Invoke-BambooAPI 'meta/lists' -ApiKey $ApiKey -Subdomain $Subdomain
-    [xml]$Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData
+    $Fields = Invoke-BambooAPI 'meta/fields' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
+    $Lists = Invoke-BambooAPI 'meta/lists' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
+    [xml]$Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData -Proxy $Proxy
     $metadata = @{}
     foreach ($Field in $Fields){
         $metadata[$field.id.tostring()]=[pscustomobject]@{
@@ -349,7 +360,8 @@ Function Get-BambooListItems{
         [parameter(Mandatory = $true, ParameterSetName = 'FieldID')][int]$FieldID,
         [switch]$IncludeArchived,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
 
     if ($PSCmdlet.ParameterSetName -eq 'FieldID'){
@@ -357,7 +369,7 @@ Function Get-BambooListItems{
     } else {
         $ApiCall = "meta/lists"
     }
-    $res = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain
+    $res = Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
     if ($PSCmdlet.ParameterSetName -eq 'Name'){$res = $res | Where-Object {$_.name -eq $Name}}
     if ($PSCmdlet.ParameterSetName -eq 'Alias'){$res = $res | Where-Object {$_.name -eq $Alias}}
     if ($IncludeArchived){
@@ -372,7 +384,8 @@ Function Set-BambooEmployee {
         [parameter(ValueFromPipelineByPropertyName)][Alias('employeeId')][int]$id,
         [hashtable]$Replace,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
@@ -381,7 +394,7 @@ Function Set-BambooEmployee {
         $Body = "<employee>$($Fields -join '')</employee>"
     }
     Process {
-        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -Method Post -ApiCall "employees/$id" -Body $Body
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -Method Post -ApiCall "employees/$id" -Body $Body -Proxy $Proxy
     }
     
 }
@@ -392,7 +405,8 @@ Function Set-BambooListItem{
         [parameter(ValueFromPipelineByPropertyName)][int]$ItemId,
         [parameter(ValueFromPipelineByPropertyName)][String]$ItemValue,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin{
         [collections.ArrayList]$Options = @()
@@ -403,7 +417,7 @@ Function Set-BambooListItem{
     End{
         $ApiCall = "meta/lists/$ListId"
         $Body = "<options>$($Options -join '')</options>"
-        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData -Proxy $Proxy
     }
 }
 
@@ -412,7 +426,8 @@ Function Add-BambooListItem{
         [parameter(Mandatory=$true)][int]$ListId,
         [parameter(ValueFromPipeline=$true)][String]$ItemValue,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin{
         [collections.ArrayList]$Options = @()
@@ -423,7 +438,7 @@ Function Add-BambooListItem{
     End{
         $ApiCall = "meta/lists/$ListId"
         $Body = "<options>$($Options -join '')</options>"
-        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -ApiCall $ApiCall -Method Put -Body $Body -ReturnRawData -Proxy $Proxy
     }
 }
 
@@ -434,7 +449,8 @@ Function Set-BambooEmployeeTableRow{
         [parameter(Mandatory = $true)][int]$RowId,
         [hashtable]$Replace,
         [parameter(Mandatory = $true)][string]$Subdomain,
-        [parameter(Mandatory = $true)][securestring]$ApiKey
+        [parameter(Mandatory = $true)][securestring]$ApiKey,
+        [string]$Proxy
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
@@ -448,7 +464,6 @@ Function Set-BambooEmployeeTableRow{
     }
     Process {
         $ApiCall = "employees/$id/tables/$TableName/$RowId"
-        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -Method Post -ApiCall $ApiCall -Body $Body
+        Invoke-BambooAPI -Subdomain $Subdomain -ApiKey $ApiKey -Method Post -ApiCall $ApiCall -Body $Body -Proxy $Proxy
     }
-    
 }
