@@ -17,10 +17,14 @@ Function Connect-ExchangeOnline {
     #>
     [CmdletBinding()]
     param(
-        [pscredential]$Credential = $(Get-Credential)
+        [pscredential]$Credential = $(get-credential),
+        [switch]$UseRPSProxyMethod
 
     )
-    $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/?proxymethod=rps' -Credential $Credential -Authentication Basic -AllowRedirection
+    
+    $ConnectionUri = 'https://outlook.office365.com/powershell-liveid/'
+    if ($UseRPSProxyMethod) {$ConnectionUri = $ConnectionUri + "?proxymethod=rps"}
+    $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Credential $Credential -Authentication Basic -AllowRedirection
     Import-Module (Import-PSSession $Session -AllowClobber) -Global
 }
 
