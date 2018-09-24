@@ -23,6 +23,9 @@ Function Invoke-BambooAPI {
         try {
             $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true; UseBasicParsing=$true}
             if ($PSBoundParameters.ContainsKey('Body')) {
+                if ($Body -is [string]) {
+                    $Body = [System.Text.Encoding]::UTF8.GetBytes($Body);
+                }
                 $splat['Body'] = $Body
             }
             if ($PSBoundParameters.ContainsKey('Proxy')) {
@@ -52,7 +55,6 @@ Function Invoke-BambooAPI {
             }
         }
     }
-
 }
 
 workflow Invoke-BambooAPIParallelCalls {
@@ -389,7 +391,7 @@ Function Set-BambooEmployee {
     )
     Begin {
         $Fields = foreach ($key in $Replace.keys) {
-            "<field id=`"$key`">$($Replace[$key])</field>"
+            "<field id=`"$key`">$([System.Security.SecurityElement]::Escape($Replace[$key]))</field>"
         }
         $Body = "<employee>$($Fields -join '')</employee>"
     }
@@ -412,7 +414,8 @@ Function Set-BambooListItem{
         [collections.ArrayList]$Options = @()
     }
     Process{
-        $null = $Options.add("<option id=`"$ItemId`">$ItemValue</option>")
+        $ItemValueEnc = [System.Security.SecurityElement]::Escape($ItemValue)
+        $null = $Options.add("<option id=`"$ItemId`">$ItemValueEnc</option>")
     }
     End{
         $ApiCall = "meta/lists/$ListId"
@@ -433,7 +436,8 @@ Function Add-BambooListItem{
         [collections.ArrayList]$Options = @()
     }
     Process{
-        $null = $Options.add("<option>$ItemValue</option>")
+        $ItemValueEnc = [System.Security.SecurityElement]::Escape($ItemValue)
+        $null = $Options.add("<option>$ItemValueEnc</option>")
     }
     End{
         $ApiCall = "meta/lists/$ListId"
