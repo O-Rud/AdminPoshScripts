@@ -300,7 +300,7 @@ Function Get-BambooMetadata{
     )
     $Fields = Invoke-BambooAPI 'meta/fields' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
     $Lists = Invoke-BambooAPI 'meta/lists' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
-    [xml]$Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData -Proxy $Proxy
+    $Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData -Proxy $Proxy
     $metadata = @{}
     foreach ($Field in $Fields){
         $metadata[$field.id.tostring()]=[pscustomobject]@{
@@ -332,7 +332,7 @@ Function Get-BambooMetadata{
         }
     }
 
-    foreach ($table in $tables.tables.table){
+    foreach ($table in $tables){
         foreach ($field in $table.field){
             if(!$metadata.ContainsKey($field.id.tostring())){
                 $metadata[$field.id.tostring()]=[pscustomobject]@{
