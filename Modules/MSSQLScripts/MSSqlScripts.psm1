@@ -74,13 +74,13 @@ Function New-SQLUpsertQuery{
     "SET NOCOUNT ON;
     MERGE INTO $TableName AS tgt
     USING
-      (SELECT $(($PKFields | ForEach-Object {"@$_"}) -join ", ")) AS src ($($PKFields -join ", "))
-      ON $(($PKFields | ForEach-Object {"tgt.$_ = src.$_"}) -join " and ")
+      (SELECT $(($PKFields | ForEach-Object {"@$_"}) -join ", ")) AS src ($(($PKFields | ForEach-Object {"[$_]"} ) -join ", "))
+      ON $(($PKFields | ForEach-Object {"tgt.[$_] = src.[$_]"}) -join " and ")
     WHEN MATCHED THEN
         UPDATE
-        SET $(($UpdateFields | ForEach-Object {"$_ = @$_"}) -join ", ")
+        SET $(($UpdateFields | ForEach-Object {"[$_] = @$_"}) -join ", ")
     WHEN NOT MATCHED THEN
-        INSERT ($($UpsertFields -join ", ")) VALUES ($(($UpsertFields | ForEach-Object {"@$_"}) -join ", "));
+        INSERT ($(($UpsertFields | ForEach-Object {"[$_]"}) -join ", ")) VALUES ($(($UpsertFields | ForEach-Object {"@$_"}) -join ", "));
     SET NOCOUNT OFF;"
 }
 
