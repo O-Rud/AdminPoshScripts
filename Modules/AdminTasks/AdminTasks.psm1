@@ -383,7 +383,7 @@ Function Set-ScriptDigitalSignature{
     $crtlist = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert
     If ($CertThumbPrint -ne "")
         {
-        $crtlist = @($crtlist | ?{$_.Thumbprint -eq $CertThumbprint})
+        $crtlist = @($crtlist | Where-Object{$_.Thumbprint -eq $CertThumbprint})
         }
     switch($crtlist.length)
         {
