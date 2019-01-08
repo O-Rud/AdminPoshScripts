@@ -5,14 +5,19 @@ Function Invoke-BambooAPI {
         [parameter(Mandatory = $true)][string]$Subdomain,
         [Microsoft.PowerShell.Commands.WebRequestMethod]$Method = 'Get',
         [object]$Body,
+        [ValidateSet("XML","JSON")][string]$ExpectedDataFormat = "JSON",
+        [ValidateSet("XML","JSON")][string]$RequestBodyFormat = "XML", #Default format for bamboo. Many methods support only XML Input
         [int]$MaxRetryCount = 5,
         [int]$RetryDelay = 100,
         [string]$ApiVer = 'v1',
         [switch]$ReturnRawData,
         [string]$Proxy
     )
+    $dataformats = @{
+        'XML' = "application/xml"
+        'JSON' = "application/json"
+    }
     $secpasswd = ConvertTo-SecureString "x" -AsPlainText -Force
-    
     $mycreds = New-Object System.Management.Automation.PSCredential ([Net.NetworkCredential]::new("u",$ApiKey).password, $secpasswd)
     $uri = "https://api.bamboohr.com/api/gateway.php/${Subdomain}/${ApiVer}/${ApiCall}"
     Write-Verbose "Uri: $uri"
@@ -21,12 +26,13 @@ Function Invoke-BambooAPI {
     $doTry = $true
     while ($doTry) {
         try {
-            $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = "application/json"}; DisableKeepAlive = $true; UseBasicParsing=$true}
+            $splat = @{Method = $Method; Uri = $uri; Credential = $Mycreds; Headers = @{Accept = $dataformats[$ExpectedDataFormat]}; DisableKeepAlive = $true; UseBasicParsing=$true}
             if ($PSBoundParameters.ContainsKey('Body')) {
                 if ($Body -is [string]) {
                     $Body = [System.Text.Encoding]::UTF8.GetBytes($Body);
                 }
                 $splat['Body'] = $Body
+                $splat.headers['Content-Type'] = $dataformats[$RequestBodyFormat]
             }
             if ($PSBoundParameters.ContainsKey('Proxy')) {
                 if ($Proxy -ne ""){
@@ -39,7 +45,14 @@ Function Invoke-BambooAPI {
                 $Data
             }
             else {
-                ConvertFrom-Json -InputObject $Data
+                switch ($Responce.Headers.'Content-Type'){
+                    'application/json' {
+                        ConvertFrom-Json -InputObject $Data
+                    }
+                    'application/xml' {
+                        [xml]$Data
+                    }                    
+                }
             }
             $doTry = $false
         }
