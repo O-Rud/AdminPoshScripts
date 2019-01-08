@@ -356,3 +356,40 @@ function Get-SfBSQLData {
         [pscustomobject]$ht
     }    
 }
+
+Function Set-ScriptDigitalSignature{
+    <#
+    .Synopsis
+        Adds digital signature to powershell script or other file
+    .Parameter FilePath
+        Specifies the path to a file that is being signed.
+    .Parameter CertThumbprint
+        Optional Parameter. Specifies thumbprint of certificate to be used for signature.
+        If not specified then possible two ways:
+            1) Only single certificate available in user profile - it will be used automatically
+            2) Multiple certificates available - user will be prompted to choose certificate
+    .Parameter TimestampServer
+        Optional Parameter. Refers to Timestamp Server which will be used for digital signature. Default value is http://timestamp.comodoca.com/rfc3161
+    #>
+    [CmdletBinding()]
+    Param
+        (
+        [parameter(Mandatory=$true)][string]$FilePath,
+        [parameter()][String]$CertThumbprint,
+        [parameter()][string]$TimestampServer = 'http://timestamp.comodoca.com/rfc3161'
+        )
+    
+    
+    $crtlist = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert
+    If ($CertThumbPrint -ne "")
+        {
+        $crtlist = @($crtlist | ?{$_.Thumbprint -eq $CertThumbprint})
+        }
+    switch($crtlist.length)
+        {
+        0 		{throw "No suitable certificate found"}	
+        1 		{$cert = $crtlist[0]}
+        Default	{$cert = $crtlist | Out-GridView -OutputMode Single -Title "Choose certificate"}
+        }
+    Set-AuthenticodeSignature -Certificate $cert -FilePath $FilePath -TimestampServer $TimestampServer
+}
