@@ -45,7 +45,8 @@ Function Invoke-BambooAPI {
                 $Data
             }
             else {
-                switch ($Responce.Headers.'Content-Type'){
+                $ContentType = $Responce.Headers.'Content-Type' -split ';' | Where-Object {$_ -like "application/*"}
+                switch ($ContentType){
                     'application/json' {
                         ConvertFrom-Json -InputObject $Data
                     }
