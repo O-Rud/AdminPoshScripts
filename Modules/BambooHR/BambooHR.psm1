@@ -314,7 +314,7 @@ Function Get-BambooMetadata{
     )
     $Fields = Invoke-BambooAPI 'meta/fields' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
     $Lists = Invoke-BambooAPI 'meta/lists' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
-    $Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -ReturnRawData -Proxy $Proxy
+    $Tables = Invoke-BambooAPI 'meta/tables' -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
     $metadata = @{}
     foreach ($Field in $Fields){
         $metadata[$field.id.tostring()]=[pscustomobject]@{
@@ -347,11 +347,11 @@ Function Get-BambooMetadata{
     }
 
     foreach ($table in $tables){
-        foreach ($field in $table.field){
+        foreach ($field in $table.fields){
             if(!$metadata.ContainsKey($field.id.tostring())){
                 $metadata[$field.id.tostring()]=[pscustomobject]@{
                     id=$field.id.tostring()
-                    Name = $Field.'#text'
+                    Name = $Field.name
                     datatype = $Field.type
                     alias = $Field.alias
                     FieldType = 'TableColumn'
@@ -359,7 +359,7 @@ Function Get-BambooMetadata{
                 }
             } else{
                 $metadata[$field.id.tostring()].alias = $field.alias
-                $metadata[$field.id.tostring()].Name = $Field.'#text'
+                $metadata[$field.id.tostring()].Name = $Field.name
                 $metadata[$field.id.tostring()].datatype = $Field.type
                 $metadata[$field.id.tostring()].FieldType = 'TableColumn'
                 $metadata[$field.id.tostring()].ParentObject = $table.Alias
