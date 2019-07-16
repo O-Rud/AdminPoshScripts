@@ -37,7 +37,7 @@ Function Invoke-SQLQuery {
     Register-ObjectEvent -inputObject $Connection -eventName InfoMessage -Action {$event.SourceEventArgs.message  | Write-host -ForegroundColor DarkGreen} | Out-Null
     if ($params.count -gt 0) {
         foreach ($key  in $params.keys) {
-            if ($params[$key] -ne $null) {
+            if ($null -ne $params[$key]) {
                 $Command.Parameters.AddWithValue($key, $params[$key]) | Write-Debug
             }
             Else {
@@ -149,7 +149,7 @@ Function New-SQLScriptOptions{
     $Options = [Microsoft.SqlServer.Management.SMO.ScriptingOptions]::New()
     foreach ($parameter in $MyInvocation.MyCommand.Parameters.keys){
         $Value = Get-Variable $parameter
-        if ($PSBoundParameters.ContainsKey($parameter) -or ($Value -ne $null -and $value -ne ""))
+        if ($PSBoundParameters.ContainsKey($parameter) -or ($null -ne $Value -and "" -ne $value))
             {
                 $Options.$parameter = $Value.Value
             }
@@ -230,7 +230,7 @@ Function Export-SQLDatabaseScripts{
     ) | ForEach-Object {[pscustomobject]$_}
     
     $SQLServer = [Microsoft.SqlServer.Management.Smo.Server]::new($Server)
-    if ($SQLServer.Version -eq  $null ){Throw "Can't find the instance $Server"}
+    if ($null -eq $SQLServer.Version) {Throw "Can't find the instance $Server"}
     $db = $SQLServer.Databases[$Database] 
     if ($db.name -ne $Database){Throw "Can't find the database '$Database' in $Server"};
     if ($AddNumericPrefix){
