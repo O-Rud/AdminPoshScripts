@@ -200,7 +200,7 @@ Function Get-SfBUsedNumbers {
     get-CsDialInConferencingAccessNumber | Get-LineUriPhoneNumber
     #Unassigned Numbers
     if (-not $ExcludeUnassignedNumbers) {
-        Get-CsUnassignedNumber | Convert-NumberRangeToArray | Get-LineUriPhoneNumber
+        Get-CsUnassignedNumber | Where-Object {$_.AnnouncementName -ne "Unassigned numbers to Frontdesk"}| Convert-NumberRangeToArray | Get-LineUriPhoneNumber
     }
 }
 
