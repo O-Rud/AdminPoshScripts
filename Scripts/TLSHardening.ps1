@@ -3,7 +3,8 @@ Param(
     [bool]$EnableTLS1_2_Client = $true,
     [bool]$DisableTLS1_0 = $true,
     [bool]$DisableTLS1_1_Server = $false,
-    [bool]$DisableTLS1_1_Client = $true
+    [bool]$DisableTLS1_1_Client = $true,
+    [bool]$DisableWeakCiphers = $true
 )
 
 $SChannelRegPath = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols"
@@ -45,3 +46,19 @@ if ($DisableTLS1_1_Client){
     New-ItemProperty -Path $SChannelRegPath"\TLS 1.1\Client" -Name Enabled -Value 0 -PropertyType DWORD
     New-ItemProperty -Path $SChannelRegPath"\TLS 1.1\Client" -Name DisabledByDefault -Value 0 -PropertyType DWORD
 }
+
+if($DisableWeakCiphers){
+    $SafeCipherList =  ("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", `
+                        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", `
+                        "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384", `
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", `
+                        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", `
+                        "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256")
+    $CurrentCipherList = (Get-TlsCipherSuite).name
+    $diff = Compare-Object $SafeCipherList $CurrentCipherList
+    $diff | ForEach-Object {
+        if ($_.SideIndicator -eq '=>') {Disable-TlsCipherSuite $_.InputObject}
+        if ($_.SideIndicator -eq '<=') {Enable-TlsCipherSuite $_.InputObject}
+    }
+}
+
