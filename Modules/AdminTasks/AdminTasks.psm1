@@ -1,4 +1,4 @@
-Function Connect-ExchangeOnline {
+Function Connect-ExchangeOnlineAT {
     <#
     .SYNOPSIS
     Establish connection to exchange online
