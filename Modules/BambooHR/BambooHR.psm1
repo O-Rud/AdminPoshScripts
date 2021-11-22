@@ -1,3 +1,15 @@
+Function Get-WebRequestErrorResponseBody{
+    param(
+        [System.Management.Automation.ErrorRecord]$Err
+    )
+    $streamReader = [System.IO.StreamReader]::new($Err.Exception.Response.GetResponseStream())
+    $ErrResp = $streamReader.ReadToEnd()
+    $streamReader.Close()
+    $ErrResp
+}
+
+
+
 Function Invoke-BambooAPI {
     [CmdletBinding()]param(
         [parameter(Mandatory = $true)][string]$ApiCall,
@@ -58,14 +70,15 @@ Function Invoke-BambooAPI {
             $doTry = $false
         }
         catch {
-            $statuscode = $_.InnerException.Response.StatusCode.value__
+            $statuscode = $_.Exception.Response.StatusCode.value__
+            $ErrResponseBody = Get-WebRequestErrorResponseBody $_
             if ((500..599) -contains $statuscode -and $RetryCount -lt $MaxRetryCount) {
                 Write-Debug $_
                 ++$RetryCount
             }
             else {
                 $doTry = $false
-                Write-Error $_ -RecommendedAction Stop -TargetObject @{Method = $Method; Apicall = $ApiCall; Body = $Body}
+                Write-Error $_ -RecommendedAction Stop -TargetObject @{Method = $Method; Apicall = $ApiCall; Body = $Body; ResponseBody = $ErrResponseBody}
             }
         }
     }
@@ -246,14 +259,15 @@ Function Get-BambooTimeOffRequests {
     [CmdletBinding()]param(
         [int]$RequestId,
         [int]$EmployeeId,
-        [datetime]$Start,
-        [datetime]$End,
+        [parameter(Mandatory = $true)][datetime]$Start,
+        [parameter(Mandatory = $true)][datetime]$End,
         [int]$TypeId,
         [ValidateSet('approved', 'denied', 'superceded', 'requested', 'canceled')][string]$Status,
         [ValidateSet("view", "approve")][string]$Action,
         [parameter(Mandatory = $true)][string]$Subdomain,
         [parameter(Mandatory = $true)][securestring]$ApiKey,
-        [string]$Proxy
+        [string]$Proxy,
+        [switch]$ReturnRawData
     )
     $Filter = @{}
     if ($PSBoundParameters.ContainsKey('RequestId')) {
@@ -282,7 +296,7 @@ Function Get-BambooTimeOffRequests {
         $FilterString = "?$($Filterlist -join '&')"
     }
     $ApiCall = "time_off/requests/$FilterString"
-    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy
+    Invoke-BambooAPI -ApiCall $ApiCall -ApiKey $ApiKey -Subdomain $Subdomain -Proxy $Proxy -ReturnRawData:$ReturnRawData
 }
 
 Function Get-BambooJobInfoOnDate {
