@@ -28,7 +28,7 @@
     param(
         [Parameter(Position = 0,
             Mandatory = $True,
-            ValueFromPipeline = $True)][string]$SourceString,
+            ValueFromPipeline = $True)]$SourceString,
 
         [Parameter(Position = 1,
             Mandatory = $True,
@@ -52,7 +52,13 @@
     else {
         $cert = Get-ChildItem $store | Where-Object {$_.thumbprint -eq $CertThumbprint}
     }
-    $EncodedString = [system.text.encoding]::UTF8.GetBytes($SourceString)
+    if ($SourceString -is [string]){
+        $EncodedString = [system.text.encoding]::UTF8.GetBytes($SourceString)
+    } elseif ($SourceString -is [securestring]) {
+        $EncodedString = [system.text.encoding]::UTF8.GetBytes([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($SourceString)))
+    } else {
+        throw "SourceString parameter must be either of the type [String] or [SecureString]"
+    }
     $EncryptedBytes = $Cert.PublicKey.Key.Encrypt($EncodedString, $true)
     [System.Convert]::ToBase64String($EncryptedBytes)
 }
