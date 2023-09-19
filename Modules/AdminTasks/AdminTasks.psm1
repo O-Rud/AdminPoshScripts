@@ -1,34 +1,3 @@
-Function Connect-ExchangeOnlineAT {
-    <#
-    .SYNOPSIS
-    Establish connection to exchange online
-    
-    .DESCRIPTION
-    Establish connection to exchange online and downloads powershell cmdlets
-
-    .PARAMETER Credential
-    PSCredential to be used during connection
-    
-    .EXAMPLE
-    PS> Connect-ExchangeOnline
-    
-    Will ask for credential and use it to connect to Exchange online services
-
-    #>
-    [CmdletBinding()]
-    param(
-        [pscredential]$Credential = $(get-credential),
-        [switch]$UseRPSProxyMethod
-
-    )
-    
-    $ConnectionUri = 'https://outlook.office365.com/powershell-liveid/'
-    if ($UseRPSProxyMethod) {$ConnectionUri = $ConnectionUri + "?proxymethod=rps"}
-    $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Credential $Credential -Authentication Basic -AllowRedirection
-    Import-Module (Import-PSSession $Session -AllowClobber) -Global
-}
-
-
 Function Set-ScriptDigitalSignature{
     <#
     .Synopsis
