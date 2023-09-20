@@ -1,4 +1,4 @@
-Function Set-ScriptDigitalSignature{
+Function Set-CodeDigitalSignature {
     <#
     .Synopsis
         Adds digital signature to powershell script or other file
@@ -12,27 +12,39 @@ Function Set-ScriptDigitalSignature{
     .Parameter TimestampServer
         Optional Parameter. Refers to Timestamp Server which will be used for digital signature. Default value is http://timestamp.comodoca.com/rfc3161
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName='CertThumbprint')]
     Param
-        (
-        [parameter(Mandatory=$true)][string]$FilePath,
-        [parameter()][String]$CertThumbprint,
-        [parameter()][string]$TimestampServer = 'http://timestamp.comodoca.com/rfc3161'
-        )
+    (
+        [parameter(Mandatory = $true, Position = 0)][string]$FilePath,
+        [parameter(ParameterSetName="CertThumbprint")][String]$CertThumbprint,
+        [parameter(ParameterSetName="CertSelectionDialog")][switch]$ShowCertSelectionDialog,
+        [parameter()][string]$TimestampServer = 'http://timestamp.comodoca.com?td=sha256'
+    )
     
+    If ($PSBoundParameters.ContainsKey('CertThumbprint'))
+        {
+            $cert = Get-Item "Cert:\CurrentUser\My\$CertThumbPrint"
+        }
+
+    If ($PSBoundParameters.ContainsKey('ShowCertSelectionDialog')){
+        $crtlist = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert
+        switch ($crtlist.length) {
+            0 { throw "No suitable certificate found" }	
+            1 { $cert = $crtlist[0] }
+            Default	{ $cert = $crtlist | Out-GridView -OutputMode Single -Title "Choose certificate" }
+        }
+    }
+
+    if ($null -eq $cert) {
+        $cert = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert | Where-Object{$_.NotBefore -lt $d -and $_.notafter -gt $d} | Sort-Object -Property 'NotAfter' -Descending | Select-Object -First 1
+    }
+
+    if ($cert){
+        Set-AuthenticodeSignature -Certificate $cert -FilePath $FilePath -TimestampServer $TimestampServer -HashAlgorithm SHA256
+    } else {
+        throw "No CodeSign certificate was found"
+    }
     
-    $crtlist = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert
-    If ($CertThumbPrint -ne "")
-        {
-        $crtlist = @($crtlist | Where-Object{$_.Thumbprint -eq $CertThumbprint})
-        }
-    switch($crtlist.length)
-        {
-        0 		{throw "No suitable certificate found"}	
-        1 		{$cert = $crtlist[0]}
-        Default	{$cert = $crtlist | Out-GridView -OutputMode Single -Title "Choose certificate"}
-        }
-    Set-AuthenticodeSignature -Certificate $cert -FilePath $FilePath -TimestampServer $TimestampServer
 }
 
 Function Get-SSLWebCertificate{
