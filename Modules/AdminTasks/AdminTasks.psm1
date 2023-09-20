@@ -47,7 +47,7 @@ Function Set-CodeDigitalSignature {
     
 }
 
-Function Get-SSLWebCertificate{
+Function Get-SSLWebCertificate {
     <#
     .SYNOPSIS
         Requests SSL Certificate from custom template. If necessary exports it to pfx and removes from certificate store.
@@ -93,7 +93,7 @@ Function Get-SSLWebCertificate{
     [CmdletBinding()]
     param(
         [string]$SubjectName,
-        [parameter (mandatory=$true)][string[]]$DnsName,
+        [parameter (mandatory = $true)][string[]]$DnsName,
         [string]$Template = 'SSLWebServer',
         [string]$url = 'ldap:',
         [string]$CertStoreLocation = "cert:\LocalMachine\My\",
@@ -104,39 +104,41 @@ Function Get-SSLWebCertificate{
         [switch]$Force
     )
     $Splat = @{
-        Template=$Template
-        Url = $url
+        Template          = $Template
+        Url               = $url
         CertStoreLocation = $CertStoreLocation
-        DnsName = $DnsName
+        DnsName           = $DnsName
     }
-    if ($PSBoundParameters.ContainsKey('SubjectName')){
-        $Splat['SubjectName']=$SubjectName
-    } else {
-        $Splat['SubjectName']="CN=$(@($DnsName)[0])"
+    if ($PSBoundParameters.ContainsKey('SubjectName')) {
+        $Splat['SubjectName'] = $SubjectName
     }
-    if ($PSBoundParameters.ContainsKey('Credential')){
-        $Splat['Credential']=$Credential
+    else {
+        $Splat['SubjectName'] = "CN=$(@($DnsName)[0])"
+    }
+    if ($PSBoundParameters.ContainsKey('Credential')) {
+        $Splat['Credential'] = $Credential
     }
     $Result = Get-Certificate @Splat
-    if ($Result.Status -eq 'Issued'){
-        if ($PSBoundParameters.ContainsKey('ExportToPfxPath')){
-            if (Test-Path $ExportToPfxPath -isValid){
-                if($(Test-Path $ExportToPfxPath) -and $(-not $Force)){
+    if ($Result.Status -eq 'Issued') {
+        if ($PSBoundParameters.ContainsKey('ExportToPfxPath')) {
+            if (Test-Path $ExportToPfxPath -isValid) {
+                if ($(Test-Path $ExportToPfxPath) -and $(-not $Force)) {
                     throw "File '$ExportToPfxPath' already exists"
                 }
                 $ExportFolder = Split-Path $ExportToPfxPath -Parent
-                if (-not $(Test-Path -Path $ExportFolder)){
-                        mkdir -Path $ExportFolder
-                    }
-                if(-not $PSBoundParameters.ContainsKey('Password')){
+                if (-not $(Test-Path -Path $ExportFolder)) {
+                    mkdir -Path $ExportFolder
+                }
+                if (-not $PSBoundParameters.ContainsKey('Password')) {
                     $Password = Read-Host "Password" -AsSecureString
-                    }
+                }
                 $CertPath = Join-Path $CertStoreLocation $Result.Certificate.Thumbprint
                 $ExportFile = Export-PfxCertificate -Cert $CertPath -FilePath $ExportToPfxPath -Password $Password
-                if ($ExportFile -and $RemoveAfterExport){
+                if ($ExportFile -and $RemoveAfterExport) {
                     Remove-Item $CertPath
-                    }
-            } else {
+                }
+            }
+            else {
                 throw "Invalid path '$ExportToPfxPath'"
             }
         }
