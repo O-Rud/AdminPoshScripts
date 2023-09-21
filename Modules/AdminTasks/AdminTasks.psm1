@@ -297,3 +297,67 @@ Function New-IntuneWinPackage {
     if (Test-Path "$OutputPath\$projectname.intuneWin") { Remove-Item "$OutputPath\$projectname.intuneWin" }
     Rename-Item "$OutputPath\install.intunewin" -NewName "$projectname.intuneWin" -Force
 }
+
+Function New-IntuneAppPkgFolder{
+    <#
+    .SYNOPSIS
+        Creates a folder structure for new intune app package which is suitable for packaging by New-IntuneWinPackage Function
+    .DESCRIPTION
+        Creates the following structure in the Target directory specified in the Path parameter.
+    
+        <AppName>\
+            source\
+                install\
+                    ...
+                install.cmd
+                install.ps1
+                uninstall.cmd
+                uninstall.ps1
+
+    .PARAMETER AppName
+        Name of the app to be published.
+    .PARAMETER Path
+        Path to the folder where the new folder structure should be created. Not including the app name.
+        If Path is not specified the default value is current folder.
+    .EXAMPLE
+        New-IntuneAppPkgFolder TestApp1
+        This command will create a new folder called TestApp1 in the current location with the necesary subfolders and files for packaging with New-IntuneWinPackage
+    .EXAMPLE
+        New-IntuneAppPkgFolder -AppName TestApp1 -Path C:\Temp
+        This command will create a new folder C:\Temp\TestApp1 with the necesary subfolders and files for packaging with New-IntuneWinPackage
+    #>
+    param(
+        [parameter(Mandatory)][string]$AppName,
+        [string]$Path
+    )
+    if (-not ($PSBoundParameters.ContainsKey('Path'))){
+        $Path = (Get-Item -Path ".\").fullname
+    }
+    $NewAppPkgPath = Join-Path $Path $AppName
+    if (Test-Path $NewAppPkgPath) {
+        throw "Folder $NewAppPkgPath already exists"
+    }
+    mkdir $NewAppPkgPath
+    mkdir "$NewAppPkgPath\source"
+    mkdir "$NewAppPkgPath\source\install"
+    $InstallCmd = @"
+@ECHO OFF
+IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
+    "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0%install.ps1"
+) ELSE (
+    "%WINDIR%\System32\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0%install.ps1"
+)
+"@
+    $UninstallCmd =@"
+@ECHO OFF
+IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
+    "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0uninstall.ps1"
+) ELSE (
+    "%WINDIR%\System32\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0uninstall.ps1"
+)
+"@
+    Set-Content -Path "$NewAppPkgPath\source\install.cmd" -Value $InstallCmd
+    Set-Content -Path "$NewAppPkgPath\source\uninstall.cmd" -Value $UninstallCmd
+    New-Item -Path "$NewAppPkgPath\source\install.ps1"
+    New-Item -Path "$NewAppPkgPath\source\uninstall.ps1"
+}
