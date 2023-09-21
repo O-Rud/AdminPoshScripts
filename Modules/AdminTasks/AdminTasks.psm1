@@ -152,7 +152,8 @@ Function New-IntuneWinPackage {
         [string]$intuneWinPath, #Path to the IntuneWin.exe file 
         [string]$PackagePath, #Path to the folder containing app to package
         [switch]$RewriteIntuneWinAppPath,
-        [string[]]$ExcludePaths = @()                       #Files not to be included in release
+        [string[]]$ExcludeFiles = @(),                       #Files not to be included in release
+        [string[]]$ExcludeFolders = @()                       #Files not to be included in release
     )
     
     $IntuneWinRegPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IntuneWinAppUtil.exe"
@@ -199,16 +200,29 @@ Function New-IntuneWinPackage {
     }
 
     if (-not $(Test-Path $ReleasePath)) { mkdir $ReleasePath }
-    foreach ($item in $(Get-ChildItem -path $SourcePath -Recurse)) {
-        if ($ExcludePaths -notcontains $item.fullname) {
-            if ($item.PSIsContainer) {
-                Copy-Item -Path $item.fullname -Force -Destination $($item.parent.fullname.replace($SourcePath, $ReleasePath))
-            }
-            else {
-                Copy-Item -Path $item.fullname -Force -Destination $($item.fullname.replace($SourcePath, $ReleasePath))
+    
+    $Arglist = ".\source", ".\release", "/MIR", "/XO"
+    if ($ExcludeFiles.count -gt 0){
+        $Arglist += "/XF"
+        foreach ($item in $ExcludeFiles) {
+            if ($item -match "^\.\\") {
+                $Arglist += $($item -replace "^\.",$PackagePath)
+            } else {
+                $Arglist += $item
             }
         }
     }
+    if ($ExcludeFolders.count -gt 0){
+        $Arglist += "/XD"
+        foreach ($item in $ExcludeFolders) {
+            if ($item -match "^\.\\") {
+                $Arglist += $($item -replace "^\.",$PackagePath)
+            } else {
+                $Arglist += $item
+            }
+        }
+    }
+    $null = Start-Process "robocopy.exe" -ArgumentList $arglist -NoNewWindow -PassThru -Wait
 
     $projectname = (Get-item $sourcePath ).parent.name
 
