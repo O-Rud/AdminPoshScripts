@@ -36,7 +36,8 @@ Function Set-CodeDigitalSignature {
     }
 
     if ($null -eq $cert) {
-        $cert = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert | Where-Object{$_.NotBefore -lt $d -and $_.notafter -gt $d} | Sort-Object -Property 'NotAfter' -Descending | Select-Object -First 1
+        $d = get-date
+        $cert = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert | Where-Object { $_.NotBefore -lt $d -and $_.notafter -gt $d } | Sort-Object -Property 'NotAfter' -Descending | Select-Object -First 1
     }
 
     if ($cert){
