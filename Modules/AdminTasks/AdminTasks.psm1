@@ -147,3 +147,80 @@ Function Get-SSLWebCertificate {
     }
 }
 
+Function New-IntuneWinPackage {
+    param(
+        [string]$intuneWinPath, #Path to the IntuneWin.exe file 
+        [string]$PackagePath, #Path to the folder containing app to package
+        [switch]$RewriteIntuneWinAppPath,
+        [string[]]$ExcludePaths = @()                       #Files not to be included in release
+    )
+    
+    $IntuneWinRegPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IntuneWinAppUtil.exe"
+    foreach($hive in @("HKCU","HKLM")){
+        $Regpath = "$($hive):\$IntuneWinRegPath"
+        if (Test-Path $Regpath) {
+            $intuneWinAppPath = Get-ItemPropertyValue -Path $Regpath -Name '(default)'
+            if ($intuneWinAppPath) {break}
+        }
+    }
+    
+    if ($PSBoundParameters.ContainsKey('intuneWinPath')) {
+        if (Test-Path $intuneWinPath){
+            if (-not $(Test-Path [string]$intuneWinAppPath) -or $RewriteIntuneWinAppPath){
+                New-Item -Path "HKCU:\$IntuneWinRegPath" -Value $intuneWinPath -Force
+                Set-ItemProperty -Path "HKCU:\$IntuneWinRegPath" -Name "Path" -Value $(Split-Path $intuneWinPath -Parent)
+            }
+        } else {
+            throw "File $intuneWinPath not found"
+        }
+    } else {
+        $intuneWinPath = [string]$intuneWinAppPath
+    }
+    if (-not $(Test-path $intuneWinPath)) { throw "IntuneWin.exe was not found" }
+    
+    if (-not $PSBoundParameters.ContainsKey('PackagePath')) {
+        $PackagePath = (get-item ".\").fullname
+    }
+
+    $SourcePath = Join-Path $PackagePath "source"
+    $OutputPath = Join-Path $PackagePath "output"
+    $ReleasePath = Join-Path $PackagePath "release"
+
+    if (-not $(Test-Path $PackagePath)) {
+        throw "Folder $PackagePath does not exist"
+    }
+
+    if (-not $(Test-Path $SourcePath)) {
+        throw "Package Folder $PackagePath does not contain `"source`" folder"
+    }
+
+    if (0 -eq (Get-ChildItem -Path $SourcePath -Attributes !Directory -Recurse).count) {
+        throw "Folder $SourcePath does not contain any files"
+    }
+
+    if (-not $(Test-Path $ReleasePath)) { mkdir $ReleasePath }
+    foreach ($item in $(Get-ChildItem -path $SourcePath -Recurse)) {
+        if ($ExcludePaths -notcontains $item.fullname) {
+            if ($item.PSIsContainer) {
+                Copy-Item -Path $item.fullname -Force -Destination $($item.parent.fullname.replace($SourcePath, $ReleasePath))
+            }
+            else {
+                Copy-Item -Path $item.fullname -Force -Destination $($item.fullname.replace($SourcePath, $ReleasePath))
+            }
+        }
+    }
+
+    $projectname = (Get-item $sourcePath ).parent.name
+
+    Get-ChildItem -Path $ReleasePath -Include *.ps1, *.psm1 -Recurse | ForEach-Object {
+        $Signature = Get-AuthenticodeSignature $($_.fullname)
+        if ($Signature.Status -ne "Valid") {
+            Set-CodeDigitalSignature -FilePath $($_.fullname)
+        }
+    }
+
+    $intuneArgs = "-c", $ReleasePath, "-s", "$ReleasePath\install.cmd", "-o", $OutputPath, "-q"
+    $null = Start-Process $intuneWinPath -ArgumentList $intuneArgs -NoNewWindow -PassThru -Wait
+    if (Test-Path "$OutputPath\$projectname.intuneWin") { Remove-Item "$OutputPath\$projectname.intuneWin" }
+    Rename-Item "$OutputPath\install.intunewin" -NewName "$projectname.intuneWin" -Force
+}
