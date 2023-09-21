@@ -148,33 +148,88 @@ Function Get-SSLWebCertificate {
 }
 
 Function New-IntuneWinPackage {
+    <#
+    .SYNOPSIS
+        Creates IntuneWin App package from the files in the Target folder. Target folder is expected to have proper structure which can be created by the New-IntuneAppPkgFolder function.
+    .DESCRIPTION
+        Function takes files located in the source subfolder of the Target folder and copies them to the release folder. If release folder does not exist it will be created.
+        Files and folders mentioned in ExcludeFiles and ExcludeFolders parameters respectively are not copied. Existing content of release folder will be overwritten.
+        Then script Files in release folder are digitally signed using the best available codesign certificate in the user certificate store.
+        Files from release folder are packaged using IntuneWinAppUtil.exe tool. Path to the tool either provided in the intuneWinPath parameter.
+        If intuneWinPath parameter is not specified function will try to get location of IntuneWinAppUtil.exe from windows registry.
+        Resulting intunewin file is stored in the output folder. If it does not exist it will be created automatically. Existing content of output folder will be overwritten
+
+    .PARAMETER PackagePath
+        Path to the folder containing app to package. This folder is expected to have the following structure:
+        <PackageName>
+            source
+                isntall
+                    <app files>
+                install.cmd
+                install.ps1
+                uninstall.cmd
+                uninstall.ps1
+            release
+            output
+        
+        This structure can be automatically created using the New-IntuneAppPkgFolder function
+    .PARAMETER intuneWinPath
+        Path to the IntuneWinAppUtil.exe file. If not specified function will try to get it's location in the SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IntuneWinAppUtil.exe registry key.
+        This registry key us being automatically created if intuneWinPath is specified
+    .PARAMETER RewriteIntuneWinAppPath
+        Specify this parameter to update the path to the IntuneWinAppUtil.exe in the registry
+    .PARAMETER ExcludeFiles
+        List of files in the source folder which should bot be included in the resultin package. It can be either a file name, full file path or path relative to the package root folder
+    .PARAMETER ExcludeFolders
+        List of folders in the source folder which should bot be included in the resultin package. It can be either a foder name, full path or path relative to the package root folder
+    .EXAMPLE
+        New-IntuneWinPackage
+        This command will create intunewin file from the data in the source subfolder of the current folder 
+        Resulting package will be stored in the output folder created in the current location
+        Location of IntuneWinAppUtil.exe will be taken from the registry if possible
+    .EXAMPLE
+        New-IntuneWinPackage -PackagePath C:\intuneapps\testapp -intuneWinPath C:\prg\IntuneWinAppUtil\IntuneWinAppUtil.exe -ExcludeFiles .\source\install\testignore.txt 
+        This command will create C:\intuneapps\testapp\output\testapp.intuneWin file
+        From the data in the C:\intuneapps\testapp\source folder
+        Using the C:\prg\IntuneWinAppUtil\IntuneWinAppUtil.exe utility
+        if there is no IntuneWinAppUtil.exe location stored in the registry it will be saved
+    .EXAMPLE
+        New-IntuneWinPackage -intuneWinPath C:\prg\IntuneWinAppUtil\IntuneWinAppUtil.exe -RewriteIntuneWinAppPath
+        This command will create intunewin file from the data in the source subfolder of the current folder 
+        Resulting package will be stored in the output folder created in the current location
+        Using the C:\prg\IntuneWinAppUtil\IntuneWinAppUtil.exe utility
+        Path in the registry will be updated regardless of it's previous existence in the registry
+
+    #>
     param(
+        [string]$PackagePath, #Path to the folder containing app to package    
         [string]$intuneWinPath, #Path to the IntuneWin.exe file 
-        [string]$PackagePath, #Path to the folder containing app to package
-        [switch]$RewriteIntuneWinAppPath,
-        [string[]]$ExcludeFiles = @(),                       #Files not to be included in release
-        [string[]]$ExcludeFolders = @()                       #Files not to be included in release
+        [switch]$RewriteIntuneWinAppPath, #Force Update IntuneWin app path in the registry
+        [string[]]$ExcludeFiles = @(), #Files not to be included in release
+        [string[]]$ExcludeFolders = @() #Files not to be included in release
     )
     
     $IntuneWinRegPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IntuneWinAppUtil.exe"
-    foreach($hive in @("HKCU","HKLM")){
+    foreach ($hive in @("HKCU", "HKLM")) {
         $Regpath = "$($hive):\$IntuneWinRegPath"
         if (Test-Path $Regpath) {
             $intuneWinAppPath = Get-ItemPropertyValue -Path $Regpath -Name '(default)'
-            if ($intuneWinAppPath) {break}
+            if ($intuneWinAppPath) { break }
         }
     }
     
     if ($PSBoundParameters.ContainsKey('intuneWinPath')) {
-        if (Test-Path $intuneWinPath){
-            if (-not $(Test-Path [string]$intuneWinAppPath) -or $RewriteIntuneWinAppPath){
+        if (Test-Path $intuneWinPath) {
+            if (-not $(Test-Path [string]$intuneWinAppPath) -or $RewriteIntuneWinAppPath) {
                 New-Item -Path "HKCU:\$IntuneWinRegPath" -Value $intuneWinPath -Force
                 Set-ItemProperty -Path "HKCU:\$IntuneWinRegPath" -Name "Path" -Value $(Split-Path $intuneWinPath -Parent)
             }
-        } else {
+        }
+        else {
             throw "File $intuneWinPath not found"
         }
-    } else {
+    }
+    else {
         $intuneWinPath = [string]$intuneWinAppPath
     }
     if (-not $(Test-path $intuneWinPath)) { throw "IntuneWin.exe was not found" }
@@ -202,22 +257,24 @@ Function New-IntuneWinPackage {
     if (-not $(Test-Path $ReleasePath)) { mkdir $ReleasePath }
     
     $Arglist = ".\source", ".\release", "/MIR", "/XO"
-    if ($ExcludeFiles.count -gt 0){
+    if ($ExcludeFiles.count -gt 0) {
         $Arglist += "/XF"
         foreach ($item in $ExcludeFiles) {
             if ($item -match "^\.\\") {
-                $Arglist += $($item -replace "^\.",$PackagePath)
-            } else {
+                $Arglist += $($item -replace "^\.", $PackagePath)
+            }
+            else {
                 $Arglist += $item
             }
         }
     }
-    if ($ExcludeFolders.count -gt 0){
+    if ($ExcludeFolders.count -gt 0) {
         $Arglist += "/XD"
         foreach ($item in $ExcludeFolders) {
             if ($item -match "^\.\\") {
-                $Arglist += $($item -replace "^\.",$PackagePath)
-            } else {
+                $Arglist += $($item -replace "^\.", $PackagePath)
+            }
+            else {
                 $Arglist += $item
             }
         }
