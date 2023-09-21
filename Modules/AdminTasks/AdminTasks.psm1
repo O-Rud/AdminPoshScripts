@@ -163,16 +163,16 @@ Function New-IntuneWinPackage {
 
     .PARAMETER PackagePath
         Path to the folder containing app to package. This folder is expected to have the following structure:
-        <PackageName>
-            source
-                isntall
+        <PackageName>\
+            source\
+                install\
                     <app files>
                 install.cmd
                 install.ps1
                 uninstall.cmd
                 uninstall.ps1
-            release
-            output
+            release\    (Optional)
+            output\     (Optional)
         
         This structure can be automatically created using the New-IntuneAppPkgFolder function
     .PARAMETER intuneWinPath
