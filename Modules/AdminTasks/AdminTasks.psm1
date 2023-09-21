@@ -12,21 +12,20 @@ Function Set-CodeDigitalSignature {
     .Parameter TimestampServer
         Optional Parameter. Refers to Timestamp Server which will be used for digital signature. Default value is http://timestamp.comodoca.com/rfc3161
     #>
-    [CmdletBinding(DefaultParameterSetName='CertThumbprint')]
+    [CmdletBinding(DefaultParameterSetName = 'CertThumbprint')]
     Param
     (
         [parameter(Mandatory = $true, Position = 0)][string]$FilePath,
-        [parameter(ParameterSetName="CertThumbprint")][String]$CertThumbprint,
-        [parameter(ParameterSetName="CertSelectionDialog")][switch]$ShowCertSelectionDialog,
+        [parameter(ParameterSetName = "CertThumbprint")][String]$CertThumbprint,
+        [parameter(ParameterSetName = "CertSelectionDialog")][switch]$ShowCertSelectionDialog,
         [parameter()][string]$TimestampServer = 'http://timestamp.comodoca.com?td=sha256'
     )
     
-    If ($PSBoundParameters.ContainsKey('CertThumbprint'))
-        {
-            $cert = Get-Item "Cert:\CurrentUser\My\$CertThumbPrint"
-        }
+    If ($PSBoundParameters.ContainsKey('CertThumbprint')) {
+        $cert = Get-Item "Cert:\CurrentUser\My\$CertThumbPrint"
+    }
 
-    If ($PSBoundParameters.ContainsKey('ShowCertSelectionDialog')){
+    If ($PSBoundParameters.ContainsKey('ShowCertSelectionDialog')) {
         $crtlist = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert
         switch ($crtlist.length) {
             0 { throw "No suitable certificate found" }	
@@ -40,9 +39,10 @@ Function Set-CodeDigitalSignature {
         $cert = Get-ChildItem cert:\CurrentUser\My -CodeSigningCert | Where-Object { $_.NotBefore -lt $d -and $_.notafter -gt $d } | Sort-Object -Property 'NotAfter' -Descending | Select-Object -First 1
     }
 
-    if ($cert){
+    if ($cert) {
         Set-AuthenticodeSignature -Certificate $cert -FilePath $FilePath -TimestampServer $TimestampServer -HashAlgorithm SHA256
-    } else {
+    }
+    else {
         throw "No CodeSign certificate was found"
     }
     
