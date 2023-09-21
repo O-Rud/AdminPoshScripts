@@ -9,6 +9,8 @@ Function Set-CodeDigitalSignature {
         If not specified then possible two ways:
             1) Only single certificate available in user profile - it will be used automatically
             2) Multiple certificates available - user will be prompted to choose certificate
+    .PARAMETER ShowCertSelectionDialog
+        Specify this switch parameter to show certificate selaction dialog. THis parameter is ignored if there are less than 2 codesign certificates present in the system
     .Parameter TimestampServer
         Optional Parameter. Refers to Timestamp Server which will be used for digital signature. Default value is http://timestamp.comodoca.com/rfc3161
     #>
