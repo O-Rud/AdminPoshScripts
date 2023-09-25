@@ -258,7 +258,7 @@ Function New-IntuneWinPackage {
 
     if (-not $(Test-Path $ReleasePath)) { mkdir $ReleasePath }
     
-    $Arglist = ".\source", ".\release", "/MIR", "/XO"
+    $Arglist = $SourcePath, $ReleasePath, "/MIR", "/XO"
     if ($ExcludeFiles.count -gt 0) {
         $Arglist += "/XF"
         foreach ($item in $ExcludeFiles) {
