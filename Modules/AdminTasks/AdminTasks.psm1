@@ -298,7 +298,7 @@ Function New-IntuneWinPackage {
     Rename-Item "$OutputPath\install.intunewin" -NewName "$projectname.intuneWin" -Force
 }
 
-Function New-IntuneAppPkgFolder{
+Function New-IntuneAppPkgTemplate{
     <#
     .SYNOPSIS
         Creates a folder structure for new intune app package which is suitable for packaging by New-IntuneWinPackage Function
@@ -361,3 +361,7 @@ IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
     New-Item -Path "$NewAppPkgPath\source\install.ps1"
     New-Item -Path "$NewAppPkgPath\source\uninstall.ps1"
 }
+
+Set-Alias -Name SignCode -Value 'Set-CodeDigitalSignature' -Option ReadOnly -Description "Digitally signs an executable file like Powershell script or *.exe" -Force
+
+Export-ModuleMember -Function * -Alias *
