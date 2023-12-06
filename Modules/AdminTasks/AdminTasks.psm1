@@ -292,7 +292,7 @@ Function New-IntuneWinPackage {
         }
     }
 
-    $intuneArgs = "-c", $ReleasePath, "-s", "$ReleasePath\install.cmd", "-o", $OutputPath, "-q"
+    $intuneArgs = "-c", "`"$ReleasePath`"", "-s", "`"$ReleasePath\install.cmd`"", "-o", "`"$OutputPath`"", "-q"
     $null = Start-Process $intuneWinPath -ArgumentList $intuneArgs -NoNewWindow -PassThru -Wait
     if (Test-Path "$OutputPath\$projectname.intuneWin") { Remove-Item "$OutputPath\$projectname.intuneWin" }
     Rename-Item "$OutputPath\install.intunewin" -NewName "$projectname.intuneWin" -Force
