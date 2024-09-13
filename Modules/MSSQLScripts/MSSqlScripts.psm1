@@ -4,37 +4,65 @@ Function Invoke-SQLQuery {
         Runs query against MSSQLServer database
     .PARAMETER text
         SQL command text.
-	.PARAMETER base
+    .PARAMETER base
         SQL Database Name
     .PARAMETER server
         SQL Server instance name
-	.PARAMETER CommandType
-		Optional parameter. SQL Command type. Must be one of: 'StoredProcedure', 'TableDirect' or 'Text'. Default value is 'Text'.
-	.PARAMETER CommandTimeout
-		Optional parameter. Timeout in seconds for sql query execution. Default value 30.
-	.PARAMETER CommandTimeout
-		Optional parameter. Timeout in seconds for sql server connection.
-	.PARAMETER params
-		Optional paremeter. Hashtable with named attributes, wich will be sent to parameterised query.
-	.PARAMETER ReturnDataset
-		Optional switch parameter. If specified results will be returned in dataset. Otherwise Function returns array of rows.
+    .PARAMETER CommandType
+        Optional. SQL Command type. Must be one of: 'StoredProcedure', 'TableDirect' or 'Text'. Default value is 'Text'.
+    .PARAMETER CommandTimeout
+        Optional. Timeout in seconds for sql query execution. Default value 30.
+    .PARAMETER CommandTimeout
+        Optional. Timeout in seconds for sql server connection.
+    .PARAMETER params
+        Optional. Hashtable with named attributes, wich will be sent to parameterised query.
+    .PARAMETER ReturnDataset
+        Optional switch parameter. If specified results will be returned in dataset. Otherwise Function returns array of rows.
     .OUTPUTS
         Query result. Output type depends on ReturnDataset parameter.
     #>
+    [cmdletbinding()]
     Param(
         [parameter(Mandatory = $true)][String]$text,
         [parameter(Mandatory = $true)][String]$base,
         [parameter(Mandatory = $true)][String]$server,
         [parameter()][validateset('StoredProcedure', 'TableDirect', 'Text')][String]$CommandType = 'Text',
-        [String]$CommandTimeout = 30,
-        [String]$ConnTimeout = 15,
+        [parameter(Mandatory = $true, ParameterSetName = "TokenAuth")][string]$AccessToken,
+        [parameter(Mandatory = $true, ParameterSetName = "SQLAuth")][pscredential]$Credential,
+        [parameter(Mandatory = $true, ParameterSetName = "WindowsAuth")][Switch]$WindowsAuth,
+        [bool]$Encrypt = $true,
+        [bool]$TrustServerCertificate = $False,
+        [int]$CommandTimeout = 120,
+        [int]$ConnTimeout = 15,
         [hashtable]$params = @{},
         [switch]$ReturnDataset
     )
-    $ConnectionString = "Data Source=$server;Initial Catalog=$base;Integrated Security=SSPI;Connect Timeout=$ConnTimeout"
+    $ConnectionProperties = [ordered]@{
+        'Server'                 = $server
+        "Initial Catalog"        = $base
+        "Connect Timeout"        = $ConnTimeout
+        'Encrypt'                = $Encrypt
+        'TrustServerCertificate' = $TrustServerCertificate
+    }
+    if ($WindowsAuth) {
+        $ConnectionProperties["Integrated Security"] = "SSPI"
+    }
+    $ConnectionStringParts = @()
+    foreach ($key in $ConnectionProperties.keys) {
+        $ConnectionStringParts += "$key=$($ConnectionProperties[$key])"
+    }
+    $ConnectionString = $ConnectionStringParts -join ';'
+    #"Data Source=$server;Initial Catalog=$base;Integrated Security=SSPI;Connect Timeout=$ConnTimeout"
     $Connection = new-Object Data.SqlClient.SqlConnection ($ConnectionString)
+    if ($AccessToken) {
+        $connection.AccessToken = $AccessToken
+    }
+    if($credential){
+        $connection.Credential = [System.Data.SqlClient.SqlCredential]::new($Credential.UserName,$Credential.Password)
+    }
+    #"Server=tcp:ngl-center-dev-sqlmi.f21c46c32edf.database.windows.net,1433;Initial Catalog=glas_dev1;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30"
     $Command = new-Object Data.SqlClient.SqlCommand ($text, $Connection)
-    Register-ObjectEvent -inputObject $Connection -eventName InfoMessage -Action {$event.SourceEventArgs.message  | Write-host -ForegroundColor DarkGreen} | Out-Null
+    Register-ObjectEvent -inputObject $Connection -eventName InfoMessage -Action { $event.SourceEventArgs.message  | Write-host -ForegroundColor DarkGreen } | Out-Null
     if ($params.count -gt 0) {
         foreach ($key  in $params.keys) {
             if ($null -ne $params[$key]) {
@@ -53,15 +81,15 @@ Function Invoke-SQLQuery {
     if ($Connection.State -ne 'Closed') {
         $Connection.Close()
     }
-    if ($ReturnDataset) {return $DataSet}
-    Else {$dataset.tables | ForEach-Object {$_.rows}}
+    if ($ReturnDataset) { return $DataSet }
+    Else { $dataset.tables | ForEach-Object { $_.rows } }
     trap {
         if ($Connection.State -ne 'Closed') {
             $Connection.Close()
         }
         Write-Error "Query to server $server failed :$_"
     }
-} #End Function Invoke-SQLQuery
+} 
 
 Function New-SQLUpsertQuery{
     [CmdletBinding()]
