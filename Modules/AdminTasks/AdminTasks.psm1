@@ -239,6 +239,9 @@ Function New-IntuneWinPackage {
     if (-not $PSBoundParameters.ContainsKey('PackagePath')) {
         $PackagePath = (get-item ".\").fullname
     }
+    else {
+        $PackagePath = (get-item $PackagePath).fullname
+    }
 
     $SourcePath = Join-Path $PackagePath "source"
     $OutputPath = Join-Path $PackagePath "output"
@@ -258,7 +261,8 @@ Function New-IntuneWinPackage {
 
     if (-not $(Test-Path $ReleasePath)) { mkdir $ReleasePath }
     
-    $Arglist = $SourcePath, $ReleasePath, "/MIR", "/XO"
+    $Arglist = "`"$SourcePath`"", "`"$ReleasePath`"", "/MIR", "/XO"
+    write-host $Arglist
     if ($ExcludeFiles.count -gt 0) {
         $Arglist += "/XF"
         foreach ($item in $ExcludeFiles) {
@@ -298,7 +302,7 @@ Function New-IntuneWinPackage {
     Rename-Item "$OutputPath\install.intunewin" -NewName "$projectname.intuneWin" -Force
 }
 
-Function New-IntuneAppPkgTemplate{
+Function New-IntuneAppPkgTemplate {
     <#
     .SYNOPSIS
         Creates a folder structure for new intune app package which is suitable for packaging by New-IntuneWinPackage Function
@@ -316,6 +320,8 @@ Function New-IntuneAppPkgTemplate{
 
     .PARAMETER AppName
         Name of the app to be published.
+    .PARAMETER UseCurrentPath
+        Don't create new folder. Use folder provided in Path parameter instead.
     .PARAMETER Path
         Path to the folder where the new folder structure should be created. Not including the app name.
         If Path is not specified the default value is current folder.
@@ -326,18 +332,42 @@ Function New-IntuneAppPkgTemplate{
         New-IntuneAppPkgFolder -AppName TestApp1 -Path C:\Temp
         This command will create a new folder C:\Temp\TestApp1 with the necesary subfolders and files for packaging with New-IntuneWinPackage
     #>
+    [CmdletBinding(DefaultParameterSetName = 'NewFolder')]
     param(
-        [parameter(Mandatory)][string]$AppName,
-        [string]$Path
+        [Parameter(Mandatory, ParameterSetName = 'NewFolder')][string]$AppName,
+        [Parameter(Mandatory, ParameterSetName = 'UseCurrentPath')][switch]$UseCurrentPath,
+        [string]$Path,
+        [switch]$ShowErrorsUI
     )
-    if (-not ($PSBoundParameters.ContainsKey('Path'))){
+    if ($ShowErrorsUI) {
+        $wshell = New-Object -ComObject Wscript.Shell
+    }
+    if (-not ($PSBoundParameters.ContainsKey('Path'))) {
         $Path = (Get-Item -Path ".\").fullname
     }
-    $NewAppPkgPath = Join-Path $Path $AppName
-    if (Test-Path $NewAppPkgPath) {
-        throw "Folder $NewAppPkgPath already exists"
+    if (-not $UseCurrentPath) {
+        $NewAppPkgPath = Join-Path $Path $AppName
+        if (Test-Path $NewAppPkgPath) {
+            $ErrMsg = "Folder $NewAppPkgPath already exists"
+            if ($ShowErrorsUI) {
+                $wshell.Popup($ErrMsg) | out-null
+            }
+            throw $ErrMsg
+        }
+        mkdir $NewAppPkgPath
     }
-    mkdir $NewAppPkgPath
+    else {
+        if (Get-ChildItem $Path) { 
+            $Errmsg = "Folder $Path is not empty."
+            if ($ShowErrorsUI) {
+                $wshell.Popup($Errmsg) | out-null
+            }
+            throw  $Errmsg 
+        }
+        
+        $NewAppPkgPath = $Path
+    }
+
     mkdir "$NewAppPkgPath\source"
     mkdir "$NewAppPkgPath\source\install"
     $InstallCmd = @"
@@ -348,7 +378,7 @@ IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
     "%WINDIR%\System32\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0%install.ps1"
 )
 "@
-    $UninstallCmd =@"
+    $UninstallCmd = @"
 @ECHO OFF
 IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
     "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0uninstall.ps1"
@@ -360,6 +390,45 @@ IF EXIST "%WINDIR%\SysNative\WindowsPowershell\v1.0\PowerShell.exe" (
     Set-Content -Path "$NewAppPkgPath\source\uninstall.cmd" -Value $UninstallCmd
     New-Item -Path "$NewAppPkgPath\source\install.ps1"
     New-Item -Path "$NewAppPkgPath\source\uninstall.ps1"
+}
+
+Function Register-DirectoryContextMenuItem {
+    param(
+        [parameter(Mandatory)][string]$Name,
+        [parameter(Mandatory)][string]$DisplayName,
+        [parameter(Mandatory)][string]$Command,
+        [switch]$IsDirectoryBackGround
+    )
+    if ($IsDirectoryBackGround) {
+        $classPath = "HKCU:\Software\Classes\Directory\background\shell"
+    }
+    else {
+        $classPath = "HKCU:\Software\Classes\Directory\shell"
+    }
+
+    $MenuPath = Join-path $ClassPath $Name
+    if (-not(Test-Path $MenuPath)) { New-Item -Path $MenuPath -Force }
+    Set-ItemProperty -Path $MenuPath -Name "(default)" -Value $DisplayName
+    $CommandPath = Join-Path $MenuPath "command"
+    if (-not(Test-Path $CommandPath)) { New-Item -Path $CommandPath -Force }
+    Set-ItemProperty -Path $CommandPath -Name "(default)" -Value $Command
+}
+
+Function Register-IntuneWinContextMenuItems {
+    $Splat = @{
+        Name        = "NewIntunePackageTemplate"
+        DisplayName = "Create Intune Package template"
+        command     = 'pwsh -c "New-IntuneAppPkgTemplate -Path ""%V"" -UseCurrentPath -ShowErrorsUI"'
+    }
+    Register-DirectoryContextMenuItem @splat
+    Register-DirectoryContextMenuItem @splat -IsDirectoryBackGround
+        $Splat = @{
+        Name        = "NewIntuneWinPackage"
+        DisplayName = "Create IntuneWin Package"
+        command     = 'pwsh -noe -c "New-IntuneWinPackage -PackagePath ""%V"""'
+    }
+    Register-DirectoryContextMenuItem @splat
+    Register-DirectoryContextMenuItem @splat -IsDirectoryBackGround
 }
 
 Set-Alias -Name SignCode -Value 'Set-CodeDigitalSignature' -Option ReadOnly -Description "Digitally signs an executable file like Powershell script or *.exe" -Force
