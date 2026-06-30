@@ -20,7 +20,7 @@ Function Set-CodeDigitalSignature {
         [parameter(Mandatory = $true, Position = 0)][string]$FilePath,
         [parameter(ParameterSetName = "CertThumbprint")][String]$CertThumbprint,
         [parameter(ParameterSetName = "CertSelectionDialog")][switch]$ShowCertSelectionDialog,
-        [parameter()][string]$TimestampServer = 'http://timestamp.comodoca.com?td=sha256'
+        [parameter()][string]$TimestampServer = 'http://timestamp.sectigo.com'
     )
     
     If ($PSBoundParameters.ContainsKey('CertThumbprint')) {
